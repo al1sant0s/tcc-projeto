@@ -26,10 +26,17 @@ format:
 editor: source
 ---
 
+```{css, echo = FALSE}
+
+p {
+  text-align: justify !important;
+}
+```
+
 ```{r}
 #| echo: false
 library("pacman")
-p_load("tidyverse", "rio", "gt", "labelled")
+p_load("tidyverse", "rio", "gt", "labelled", "moments")
 options(scipen = 999)
 ```
 
@@ -412,7 +419,7 @@ finalizaremos nossa análise com um estudo de valores faltantes na base de dados
 ```{r}
 #| out-width: 100%
 #| label: fig-boxplot-age
-#| fig-cap: distribuição das idades dos solicitantes de crédito
+#| fig-cap: Distribuição das idades por status de inadimplência
 
 ggplot(credit_risk_clean, aes(x = loan_status, y = person_age, fill = loan_status)) +
     geom_boxplot(
@@ -424,7 +431,6 @@ ggplot(credit_risk_clean, aes(x = loan_status, y = person_age, fill = loan_statu
     scale_y_continuous(breaks = seq(20, 140, by = 20)) +
     scale_fill_manual(values = c("Adimplente" = "#9ecae1", "Inadimplente" = "#6baed6")) +
     labs(
-        title = "Distribuição da idade por status de inadimplência",
         x = "Status de inadimplência",
         y = "Idade (anos)"
     ) +
@@ -435,7 +441,6 @@ A @fig-boxplot-age mostra que a parte central das distribuições da idade dos s
 entre os grupos de adimplentes e inadimplentes é muito similar.
 Ambos os grupos possuem outliers concentrados na parte superior da distribuição.
 
-
 Podemos observar pela @tbl-desc-analysis-summary que 75% dos solicitantes têm idade de
 até `r medidas_descritivas |> filter(var_name == "person_age") |> select(q3) |> pull()` anos.
 Isso indica que a maioria dos tomadores de crédito nos dados são pessoas jovens.
@@ -443,15 +448,14 @@ Isso indica que a maioria dos tomadores de crédito nos dados são pessoas joven
 ```{r}
 #| out-width: 100%
 #| label: fig-hist-person-age
-#| fig-cap: distribuição das idades dos solicitantes de crédito
+#| fig-cap: Distribuição das idades dos solicitantes de crédito
 
 credit_risk_clean |>
     ggplot(aes(x = person_age)) +
     geom_histogram(binwidth = 5, fill = "#3182bd", color = "white", alpha = 0.8) +
     theme_minimal(base_size = 11) +
     labs(
-        title = "Distribuição das idades dos solicitantes de crédito",
-        x = "Valor",
+        x = "Idade",
         y = "Frequência"
     )
 ```
@@ -463,10 +467,14 @@ que foi observado no parágrafo anterior.
 
 ### Renda anual
 
+Segundo a @tbl-desc-analysis-summary, a renda dos solicitantes é a variável
+com maior variabilidade, com desvio padrão de cerca de
+`r (medidas_descritivas |> filter(var_name == "person_income"))$sd`.
+
 ```{r}
 #| out-width: 100%
 #| label: fig-boxplot-person-income
-#| fig-cap: distribuição da renda anual dos solicitantes de crédito
+#| fig-cap: Distribuição da renda anual dos solicitantes de crédito por status de inadimplência
 
 credit_risk_clean |>
     na.omit() |>
@@ -479,40 +487,68 @@ credit_risk_clean |>
     ) +
     scale_fill_manual(values = c("Adimplente" = "#9ecae1", "Inadimplente" = "#6baed6")) +
     labs(
-        title = "Distribuição da renda anual por status de inadimplência",
         x = "Status de inadimplência",
         y = "Renda anual"
     ) +
     theme_minimal(base_size = 11)
 ```
 
-A @fig-boxplot-age mostra que a parte central das distribuições da idade dos solicitantes de crédito
-entre os grupos de adimplentes e inadimplentes é muito similar.
-Ambos os grupos possuem outliers concentrados na parte superior da distribuição.
+A renda anual apresenta acentuada assimetria positiva, caracterizada por uma cauda longa e distante da mediana,
+evidenciada pela expressiva concentração de outliers na porção superior da @fig-boxplot-person-income.
+O coeficiente de curtose de `r round(moments::kurtosis(credit_risk_clean$person_income), 2)` atesta o padrão fortemente leptocúrtico da distribuição,
+confirmando o peso excessivo da cauda em relação a uma distribuição normal.
 
-
-Podemos observar pela @tbl-desc-analysis-summary que 75% dos solicitantes têm idade de
-até `r medidas_descritivas |> filter(var_name == "person_age") |> select(q3) |> pull()` anos.
-Isso indica que a maioria dos tomadores de crédito nos dados são pessoas jovens.
+Diante destes sintomas, investigou-se a distribuição da variável sob a transformação do logaritmo natural,
+já que a renda em sua escala bruta comprometeria
+qualquer modelo de regressão com seu alto grau de alavancagem. A justificativa é
+suportada principalmente por dois motivos. O primeiro e mais importante diz
+respeito à teoria econômica que descreve que o ganho na capacidade de pagamento
+decorre de acréscimos percentuais na renda e não de aumentos nominais fixos. O
+segundo motivo é permitir a compressão da cauda longa e estabilização da escala,
+procedimento plenamente viabilizado pela ausência de valores nulos ou negativos
+na distribuição empírica da variável.
 
 ```{r}
 #| out-width: 100%
-#| label: fig-hist-person-income
-#| fig-cap: distribuição da renda anual dos solicitantes de crédito
+#| label: fig-hist-person-income-versus
+#| fig-cap: Distribuição da renda anual em escala original e logarítmica
+#| fig-subcap:
+#|  - "Escala bruta"
+#|  - "Escala logarítmica (ln)"
+#| layout-ncol: 2
 
-credit_risk_clean |>
+credit_risk_clean <- credit_risk_clean |>
+    mutate(log_person_income = log(person_income))
+
+gghist_person_income <- credit_risk_clean |>
     na.omit() |>
     ggplot(aes(x = person_income)) +
-    geom_histogram(bins = 10, fill = "#3182bd", color = "white", alpha = 0.8) +
+    geom_histogram(bins = 15, fill = "#3182bd", color = "white", alpha = 0.8) +
     theme_minimal(base_size = 11) +
     labs(
-        title = "Distribuição da renda anual por status de inadimplência",
-        x = "Valor",
+        x = "Renda anual",
         y = "Frequência"
     )
+
+gghist_log_person_income <- credit_risk_clean |>
+    na.omit() |>
+    ggplot(aes(x = log_person_income)) +
+    geom_histogram(bins = 15, fill = "#3182bd", color = "white", alpha = 0.8) +
+    theme_minimal(base_size = 11) +
+    labs(
+        x = "ln(renda anual)",
+        y = "Frequência"
+    )
+
+gghist_person_income
+gghist_log_person_income
 ```
 
-Ao avaliar a distribuição da idade dos solicitantes após o recorte, podemos observar pelo histograma da @fig-hist-person-age
-que se trata de uma distribuição assimétrica à direita, em que a maioria dos
-empréstimos estão concentrados entre as classes de 20 e 40 anos, confirmando o
-que foi observado no parágrafo anterior.
+
+A escala logarítmica reduz a curtose dos dados de `r kurtosis(credit_risk_clean$person_income)`
+para `r kurtosis(credit_risk_clean$log_person_income)`
+e possui um coeficiente de assimetria de `r skewness(credit_risk_clean$log_person_income)`, 
+que descreve uma distribuição muito mais simétrica.
+
+A inspeção visual dos histogramas da @fig-hist-person-income-versus comprova a eficácia da
+transformação. O segundo histograma agora possui caudas muito mais leves se comparado ao primeiro.
