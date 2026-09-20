@@ -1,0 +1,518 @@
+---
+# vim: shiftwidth=4 softtabstop=4 textwidth=80
+author: "Alisson Lucas da Costa Santos"
+title: "Título Principal"
+subtitle: "Nome da Matéria"
+# bibliography: references.bib
+# csl: abnt-num.csl
+lang: "pt-br"
+execute:
+    echo: false
+    cache: false
+toc: false
+number-sections: false
+toc-depth: 2
+toc-title: "Tabela de conteúdos"
+colorlinks: true
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    toc-title: "Tabela de conteúdos"
+    code-fold: true
+    code-tools: true
+    number-sections: true
+    embed-resources: true
+editor: source
+---
+
+```{r}
+#| echo: false
+library("pacman")
+p_load("tidyverse", "rio", "gt", "labelled")
+options(scipen = 999)
+```
+
+\newpage
+
+# Título
+## Subtítulo
+
+_Conteúdo do parágrafo._
+
+# Base de dados
+
+```{r}
+
+# Leitura da base
+credit_risk <- import("credit_risk_dataset.csv", headers = TRUE) |>
+    mutate(
+        loan_status           = factor(loan_status, levels = c(0, 1), labels = c("Adimplente", "Inadimplente")),
+        person_home_ownership = as.factor(person_home_ownership),
+        loan_intent           = as.factor(loan_intent),
+        loan_grade            = as.factor(loan_grade),
+        cb_person_default_on_file = as.factor(cb_person_default_on_file)
+    )
+
+# Separacao dos nomes das variaveis por tipo
+resposta <- "loan_status"
+
+categoricas <- c(
+  "person_home_ownership",
+  "loan_intent",
+  "loan_grade",
+  "cb_person_default_on_file"
+)
+
+numericas <- setdiff(
+  names(select(credit_risk, where(is.numeric))),
+  resposta
+)
+
+# Traduzir variáveis.
+nomes_legiveis <- c(
+    "person_age" = "Idade",
+    "person_income" = "Renda anual",
+    "person_home_ownership" = "Tipo de moradia",
+    "person_emp_length" = "tempo no emprego atual",
+    "loan_intent" = "Finalidade do empréstimo",
+    "loan_grade" = "Nível de risco",
+    "loan_amnt" = "Valor do empréstimo",
+    "loan_int_rate" = "Taxa de juros",
+    "loan_status" = "Status de inadimplência",
+    "loan_percent_income" = "Comprometimento da renda",
+    "cb_person_default_on_file" = "Inadimplência anterior",
+    "cb_person_cred_hist_length" = "Histórico de crédito (anos)"
+)
+
+var_label(credit_risk) <- nomes_legiveis
+```
+
+
+# O conjunto de dados
+
+Para abordar este problema, utilizaremos o conjunto de dados intitulado **Credit Risk Dataset**,
+disponibilizado na plataforma [Kaggle](https://www.kaggle.com/datasets/laotse/credit-risk-dataset?utm_source=gemini).
+
+Este conjunto de dados contém colunas que simulam dados de órgãos de proteção ao crédito,
+reunindo informações cadastrais, histórico financeiro e detalhes sobre empréstimo solicitados.
+
+Cada observação representa uma solicitação de empréstimo. No total o conjunto é composto por `r nrow(credit_risk)` observações e
+`r ncol(credit_risk)` variáveis que se dividem em três grupos: perfil do solicitante, características do empréstimo e
+informações de risco.
+
+## Perfil do solicitante
+
+No perfil do solicitante, estão reunidas as seguintes variáveis:
+
+- **Idade** (`person_age`): idade em anos.
+- **Renda anual** (`person_income`): renda anual declarada (em unidade monetária).
+- **Tipo de moradia** (`person_home_ownership`): situação de moradia atual, classificada em:
+    - aluguel;
+    - própria;
+    - financiada;
+    - outros.
+- **tempo no emprego atual** (`person_emp_length`): tempo de permanência no emprego atual (em anos).
+
+## Características do empréstimo
+
+Em relação às características da operação de crédito, constam as seguintes variáveis:
+
+- **Finalidade do empréstimo** (`loan_intent`): destinação do recurso solicitado, classificada em:
+    - uso pessoal;
+    - educacional;
+    - despesas médicas;
+    - empreendimento;
+    - reforma de imóvel;
+    - quitação de dívidas.
+- **Classificação de risco** (`loan_grade`): classificação atribuída à operação numa escala ordinal de "A" (menor risco) a "G" (maior risco).
+- **Valor do empréstimo** (`loan_amnt`): montante financeiro total solicitado.
+- **Taxa de juros** (`loan_int_rate`): taxa de juros anual aplicada ao empréstimo (em percentual).
+- **Comprometimento da renda** (`loan_percent_income`): proporção entre o valor do empréstimo e a renda anual do solicitante.
+
+## Informações de risco
+
+Por fim, as seguintes variáveis associadas ao histórico de crédito estão disponíveis:
+
+- **Inadimplência anterior** (`cb_person_default_on_file`): presença de registro de inadimplência prévia em birôs de crédito ("Sim" ou "Não").
+- **Histórico de crédito** (`cb_person_cred_hist_length`): tempo decorrido do primeiro registro de crédito em birôs (em anos).
+- **Status de inadimplência** (`loan_status`): variável de interesse (resposta), que indica o desfecho do pagamento do empréstimo ($0$ para adimplente/quitado e $1$ para inadimplente/*default*).
+
+# Análise exploratória
+
+## Limpeza preliminar dos dados
+
+Iniciaremos a nossa análise descritiva dos dados de risco de crédito fazendo uma
+limpeza preliminar no conjunto das variáveis quantitativas. Vamos começar conferindo
+uma tabela com diversas medidas descritivas das variáveis quantitativas para que possamos
+rapidamente identificar possíveis inconsistências na base de dados.
+
+```{r}
+#| label: tbl-desc-analysis-summary-preview
+#| tbl-cap: medidas descritivas
+
+medidas_descritivas <- credit_risk |>
+    select(all_of(numericas)) |>
+    pivot_longer(cols = everything(), names_to = "variavel", values_to = "valor") |>
+    group_by(variavel) |>
+    summarise(
+        mean = mean(valor, na.rm = TRUE),
+        sd = sd(valor, na.rm = TRUE),
+        min = min(valor, na.rm = TRUE),
+        q1 = quantile(valor, 0.25, na.rm = TRUE),
+        median = median(valor, na.rm = TRUE),
+        q3 = quantile(valor, 0.75, na.rm = TRUE),
+        max = max(valor, na.rm = TRUE)
+    ) |>
+    mutate(var_name = variavel) |>
+    mutate(across(-c(variavel, var_name), \(x) round(x, 2))) |>
+    mutate(variavel = coalesce(nomes_legiveis[variavel], variavel))
+
+medidas_descritivas |>
+    select(-var_name) |>
+    gt(rowname_col = "variavel") |>
+    tab_stubhead("Variável") |>
+    cols_label(
+        mean = "Média",
+        sd = "Desvio padrão",
+        min = "Mínimo",
+        q1 = md("$q_1$"),
+        median = "Mediana",
+        q3 = md("$q_3$"),
+        max = "Máximo"
+    ) |>
+    cols_align(align = "center", columns = everything()) |>
+    tab_options(
+        table.width = "65%",
+        column_labels.font.weight = "bold",
+        column_labels.padding = "10px"
+    ) |>
+    tab_source_note(
+        source_note = md("**Fonte**: base de dados.")
+    )
+
+colnames(credit_risk)
+```
+
+Inspecionando brevemente as medidas, não há dados negativos, porém detecta-se problemas lógicos em duas variáveis: idade do solicitante e tempo no emprego atual.
+O máximo dessas variáveis revela outliers situados a uma distância consideravelmente alta do 3º quartil de suas respectivas distribuições, que torna o dado implausível quando
+confrontado com a natureza lógica da variável. Por exemplo, é biologicamente impossível que uma pessoa tenha mais de 140 anos ou
+tenha permanecido no mesmo emprego por `r max(credit_risk$person_emp_length, na.rm = TRUE)` anos.
+
+Alguns destes pontos discrepantes podem representar tanto erros de cadastro e mensuração
+como também possíveis pontos de alavancagem, como a exorbitante renda anual de `r max(credit_risk$person_income)`.
+É importante distinguir quais observações possuem dados inválidos e removê-las da base antes da análise exploratória começar.
+
+Começaremos então pela váriavel idade. A @fig-boxplot-age-preview apresenta a distribuição da variável
+por meio de um box plot.
+
+```{r}
+#| out-width: 100%
+#| label: fig-boxplot-age-preview
+#| fig-cap: distribuição das idades dos solicitantes de crédito (prévia)
+
+ggplot(credit_risk, aes(y = person_age)) +
+    geom_boxplot(
+        outlier.color = "red",
+        outlier.size = 1,
+        fill = "steelblue",
+        width = 0.5,
+        show.legend = FALSE
+    ) +
+    geom_hline(
+        yintercept = 80,
+        color = "gold3",
+        linetype = "dashed",
+        linewidth = 0.8
+    ) +
+    scale_y_continuous(breaks = seq(20, 140, by = 20)) +
+    labs(
+        title = "Distribuição da idade por status de inadimplência",
+        y = "Idade (anos)"
+    ) +
+    theme_minimal(base_size = 11)
+```
+
+
+```{r}
+#| label: person-age-chunk
+
+credit_risk_clean <- credit_risk |> filter(person_age <= 80)
+na_person_age <- (credit_risk |> filter(person_age > 80) |> count())$n
+na_person_age_prop <- na_person_age / nrow(credit_risk)
+```
+
+Os bancos operam prioritariamente com a faixa de 18 a 80 anos para concessão de crédito.
+O teto de 80 anos fundamenta-se nas práticas do mercado financeiro, no qual concessões acima dessa idade envolvem regras operacionais e limites estritos de elegibilidade securitária.
+Portanto, este critério será adotado neste trabalho. Como suporte adicional a essa decisão, identificou-se que apenas
+`r na_person_age` observações estão acima desse patamar (incluindo idades biologicamente inválidas),
+o que representa `r round(na_person_age_prop * 100, 2)`% da amostra. Trata-se de uma perda amostral marginal que não
+compromete a representatividade dos dados e preserva a qualidade do ajuste dos modelos preditivos.
+Além de que, alguns destes outliers estão acima de 100 anos, o que muito provavelmente trata-se de erro de preenchimento ou até fraude financeira,
+enfatizando ainda mais a motivação de remoção destas observações.
+
+De forma similar, a distribuição da variável de tempo no emprego atual é
+apresentada na @fig-boxplot-person-emp-length-preview.
+
+```{r}
+#| out-width: 100%
+#| label: fig-boxplot-person-emp-length-preview
+#| fig-cap: distribuição dos tempos no emprego dos solicitantes
+
+ggplot(credit_risk |> na.omit(), aes(y = person_emp_length)) +
+    geom_boxplot(
+        outlier.color = "red",
+        outlier.size = 1,
+        fill = "steelblue",
+        width = 0.5,
+        show.legend = FALSE
+    ) +
+    geom_hline(
+        yintercept = 80, 
+        color = "gold3",
+        linetype = "dashed",
+        linewidth = 0.8
+    ) +
+    scale_y_continuous(breaks = seq(20, 140, by = 20)) +
+    labs(
+        title = "Distribuição dos tempos no emprego dos solicitantes de crédito",
+        y = "Tempo de serviço (anos)"
+    ) +
+    theme_minimal(base_size = 11)
+```
+
+
+```{r}
+#| label: person-emp-length
+
+na_person_emp_length <- (credit_risk |> filter(person_emp_length > 80) |> count())$n
+na_person_emp_length_prop <- na_person_emp_length / nrow(credit_risk)
+```
+
+Mais uma vez, destacamos o teto de 80 anos na figura. Aqui podemos observar que
+os maiores tempos de serviço plausíveis vão até 45 anos. Existem
+`r na_person_emp_length` observações de tempos no emprego atual acima de 120 anos.
+Estas duas observações representam `r round(na_person_emp_length_prop * 100,
+2)`% da amostra e serão, pelo mesmo motivo discutido para a idade, removidas da base.
+
+```{r}
+#| label: credit-risk-clean
+credit_risk_clean <- credit_risk |>
+  filter(
+    is.na(person_age) | person_age <= 80,
+    is.na(person_emp_length) | person_emp_length <= 80
+  )
+
+age_lt_emp_length <- sum(credit_risk_clean$person_age < credit_risk_clean$person_emp_length)
+age_lt_cb_person_cred_hist_length <- sum(credit_risk_clean$person_age < credit_risk_clean$cb_person_cred_hist_length)
+max_diff_ratio_loan_percent_income <- max(abs(credit_risk$loan_amnt / credit_risk$person_income - credit_risk$loan_percent_income))
+```
+
+
+Ainda no âmbito das inconsistências das idades, verificou-se que não havia
+observações em que a idade era inferior ao tempo no emprego atual e tampouco
+era inferior ao histórico de crédito. Por fim, foi calculada a razão entre o
+valor do empréstimo e a renda anual do solicitante e obteve-se a diferença absoluta com os valores correspondentes
+da variável do comprometimento da renda. A maior diferença observada foi de
+`r max_diff_ratio_loan_percent_income`, possivelmente causado por erros
+de arredondamento. Por conveniência, optou-se por continuar utilizando a
+variável de comprometimento de renda original.
+
+```{r}
+#| out-width: 100%
+#| label: fig-missing-values
+#| fig-cap: Composição de valores faltantes por variável em relação à base de dados
+
+missing_values <- credit_risk |>
+  summarise(across(everything(), \(x) sum(is.na(x)))) |>
+  pivot_longer(cols = everything(), names_to = "variavel", values_to = "na") |>
+  filter(na > 0) |>
+  mutate(
+    perc_na  = na * 100 / nrow(credit_risk),
+    variavel = coalesce(nomes_legiveis[variavel], variavel) # Traduz os nomes
+  )
+
+ggplot(missing_values, aes(x = reorder(variavel, -na), y = na)) +
+    geom_col(fill = "steelblue", alpha = 0.85, show.legend = FALSE) +
+    geom_text(aes(label = na, vjust = -0.5)) +
+    geom_text(
+        aes(label = paste0("(", round(perc_na, 2), "%)")),
+        vjust = 1.5,
+        color = "white"
+    ) +
+    ylim(0, max(missing_values$na) * 1.1) + # Garante espaço para o rótulo
+    labs(x = "Variável", y = "Observações faltantes") +
+    theme_minimal()
+```
+
+
+A proporção de valores faltantes que estas duas variáveis possuem é alta e podem impactar a base de dados de forma preocupante se não
+forem tratadas adequadamente. Essa questão será discutida mais adiante.
+
+Após a constação das inconsistências e a remoção das
+`r nrow(credit_risk) - nrow(credit_risk_clean)` observações apuradas,
+elaborou-se uma versão atualizada de medidas descritivas para todas as
+variáveis quantitativas que é apresentada na @tbl-desc-analysis-summary.
+
+```{r}
+#| label: tbl-desc-analysis-summary
+#| tbl-cap: medidas descritivas
+
+medidas_descritivas <- credit_risk_clean |>
+    select(all_of(numericas)) |>
+    pivot_longer(cols = everything(), names_to = "variavel", values_to = "valor") |>
+    group_by(variavel) |>
+    summarise(
+        mean = mean(valor, na.rm = TRUE),
+        sd = sd(valor, na.rm = TRUE),
+        min = min(valor, na.rm = TRUE),
+        q1 = quantile(valor, 0.25, na.rm = TRUE),
+        median = median(valor, na.rm = TRUE),
+        q3 = quantile(valor, 0.75, na.rm = TRUE),
+        max = max(valor, na.rm = TRUE)
+    ) |>
+    mutate(var_name = variavel) |>
+    mutate(across(-c(variavel, var_name), \(x) round(x, 2))) |>
+    mutate(variavel = coalesce(nomes_legiveis[variavel], variavel))
+
+medidas_descritivas |>
+    select(-var_name) |>
+    gt(rowname_col = "variavel") |>
+    tab_stubhead("Variável") |>
+    cols_label(
+        mean = "Média",
+        sd = "Desvio padrão",
+        min = "Mínimo",
+        q1 = md("$q_1$"),
+        median = "Mediana",
+        q3 = md("$q_3$"),
+        max = "Máximo"
+    ) |>
+    cols_align(align = "center", columns = everything()) |>
+    tab_options(
+        table.width = "65%",
+        column_labels.font.weight = "bold",
+        column_labels.padding = "10px"
+    ) |>
+    tab_source_note(
+        source_note = md("**Fonte**: base de dados.")
+    )
+```
+
+
+## Análise univariada
+
+Iremos agora nos restringir a uma análise individual de cada variável,
+em termos de distribuição geral, presença de pontos extremos e distribuição condicionada ao status da variável de interesse.
+Após esta etapa, prosseguiremos com uma análise conjunta das variáveis e
+finalizaremos nossa análise com um estudo de valores faltantes na base de dados.
+
+### Idade
+
+```{r}
+#| out-width: 100%
+#| label: fig-boxplot-age
+#| fig-cap: distribuição das idades dos solicitantes de crédito
+
+ggplot(credit_risk_clean, aes(x = loan_status, y = person_age, fill = loan_status)) +
+    geom_boxplot(
+        outlier.color = "red",
+        outlier.size = 1,
+        width = 0.5,
+        show.legend = FALSE
+    ) +
+    scale_y_continuous(breaks = seq(20, 140, by = 20)) +
+    scale_fill_manual(values = c("Adimplente" = "#9ecae1", "Inadimplente" = "#6baed6")) +
+    labs(
+        title = "Distribuição da idade por status de inadimplência",
+        x = "Status de inadimplência",
+        y = "Idade (anos)"
+    ) +
+    theme_minimal(base_size = 11)
+```
+
+A @fig-boxplot-age mostra que a parte central das distribuições da idade dos solicitantes de crédito
+entre os grupos de adimplentes e inadimplentes é muito similar.
+Ambos os grupos possuem outliers concentrados na parte superior da distribuição.
+
+
+Podemos observar pela @tbl-desc-analysis-summary que 75% dos solicitantes têm idade de
+até `r medidas_descritivas |> filter(var_name == "person_age") |> select(q3) |> pull()` anos.
+Isso indica que a maioria dos tomadores de crédito nos dados são pessoas jovens.
+
+```{r}
+#| out-width: 100%
+#| label: fig-hist-person-age
+#| fig-cap: distribuição das idades dos solicitantes de crédito
+
+credit_risk_clean |>
+    ggplot(aes(x = person_age)) +
+    geom_histogram(binwidth = 5, fill = "#3182bd", color = "white", alpha = 0.8) +
+    theme_minimal(base_size = 11) +
+    labs(
+        title = "Distribuição das idades dos solicitantes de crédito",
+        x = "Valor",
+        y = "Frequência"
+    )
+```
+
+Ao avaliar a distribuição da idade dos solicitantes após o recorte, podemos observar pelo histograma da @fig-hist-person-age
+que se trata de uma distribuição assimétrica à direita, em que a maioria dos
+empréstimos estão concentrados entre as classes de 20 e 40 anos, confirmando o
+que foi observado no parágrafo anterior.
+
+### Renda anual
+
+```{r}
+#| out-width: 100%
+#| label: fig-boxplot-person-income
+#| fig-cap: distribuição da renda anual dos solicitantes de crédito
+
+credit_risk_clean |>
+    na.omit() |>
+    ggplot(aes(x = loan_status, y = person_income, fill = loan_status)) +
+    geom_boxplot(
+        outlier.color = "red",
+        outlier.size = 1,
+        width = 0.5,
+        show.legend = FALSE
+    ) +
+    scale_fill_manual(values = c("Adimplente" = "#9ecae1", "Inadimplente" = "#6baed6")) +
+    labs(
+        title = "Distribuição da renda anual por status de inadimplência",
+        x = "Status de inadimplência",
+        y = "Renda anual"
+    ) +
+    theme_minimal(base_size = 11)
+```
+
+A @fig-boxplot-age mostra que a parte central das distribuições da idade dos solicitantes de crédito
+entre os grupos de adimplentes e inadimplentes é muito similar.
+Ambos os grupos possuem outliers concentrados na parte superior da distribuição.
+
+
+Podemos observar pela @tbl-desc-analysis-summary que 75% dos solicitantes têm idade de
+até `r medidas_descritivas |> filter(var_name == "person_age") |> select(q3) |> pull()` anos.
+Isso indica que a maioria dos tomadores de crédito nos dados são pessoas jovens.
+
+```{r}
+#| out-width: 100%
+#| label: fig-hist-person-income
+#| fig-cap: distribuição da renda anual dos solicitantes de crédito
+
+credit_risk_clean |>
+    na.omit() |>
+    ggplot(aes(x = person_income)) +
+    geom_histogram(bins = 10, fill = "#3182bd", color = "white", alpha = 0.8) +
+    theme_minimal(base_size = 11) +
+    labs(
+        title = "Distribuição da renda anual por status de inadimplência",
+        x = "Valor",
+        y = "Frequência"
+    )
+```
+
+Ao avaliar a distribuição da idade dos solicitantes após o recorte, podemos observar pelo histograma da @fig-hist-person-age
+que se trata de uma distribuição assimétrica à direita, em que a maioria dos
+empréstimos estão concentrados entre as classes de 20 e 40 anos, confirmando o
+que foi observado no parágrafo anterior.
