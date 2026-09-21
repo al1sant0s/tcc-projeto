@@ -81,7 +81,7 @@ nomes_legiveis <- c(
     "person_age" = "Idade",
     "person_income" = "Renda anual",
     "person_home_ownership" = "Tipo de moradia",
-    "person_emp_length" = "tempo no emprego atual",
+    "person_emp_length" = "Tempo no emprego atual",
     "loan_intent" = "Finalidade do empréstimo",
     "loan_grade" = "Nível de risco",
     "loan_amnt" = "Valor do empréstimo",
@@ -102,15 +102,15 @@ Para abordar este problema, utilizaremos o conjunto de dados intitulado **Credit
 disponibilizado na plataforma [Kaggle](https://www.kaggle.com/datasets/laotse/credit-risk-dataset?utm_source=gemini).
 
 Este conjunto de dados contém colunas que simulam dados de órgãos de proteção ao crédito,
-reunindo informações cadastrais, histórico financeiro e detalhes sobre empréstimo solicitados.
+reunindo informações cadastrais, histórico financeiro e detalhes sobre empréstimos tomados.
 
-Cada observação representa uma solicitação de empréstimo. No total o conjunto é composto por `r nrow(credit_risk)` observações e
-`r ncol(credit_risk)` variáveis que se dividem em três grupos: perfil do solicitante, características do empréstimo e
+Cada observação representa uma contratação de empréstimo. No total o conjunto é composto por `r nrow(credit_risk)` observações e
+`r ncol(credit_risk)` variáveis que se dividem em três grupos: perfil do tomador, características do empréstimo e
 informações de risco.
 
-## Perfil do solicitante
+## Perfil do tomador
 
-No perfil do solicitante, estão reunidas as seguintes variáveis:
+No perfil do tomador, estão reunidas as seguintes variáveis:
 
 - **Idade** (`person_age`): idade em anos.
 - **Renda anual** (`person_income`): renda anual declarada (em unidade monetária).
@@ -119,13 +119,13 @@ No perfil do solicitante, estão reunidas as seguintes variáveis:
     - própria;
     - financiada;
     - outros.
-- **tempo no emprego atual** (`person_emp_length`): tempo de permanência no emprego atual (em anos).
+- **Tempo no emprego atual** (`person_emp_length`): tempo de permanência no emprego atual (em anos).
 
 ## Características do empréstimo
 
 Em relação às características da operação de crédito, constam as seguintes variáveis:
 
-- **Finalidade do empréstimo** (`loan_intent`): destinação do recurso solicitado, classificada em:
+- **Finalidade do empréstimo** (`loan_intent`): destinação do recurso tomado, classificada em:
     - uso pessoal;
     - educacional;
     - despesas médicas;
@@ -133,9 +133,9 @@ Em relação às características da operação de crédito, constam as seguinte
     - reforma de imóvel;
     - quitação de dívidas.
 - **Classificação de risco** (`loan_grade`): classificação atribuída à operação numa escala ordinal de "A" (menor risco) a "G" (maior risco).
-- **Valor do empréstimo** (`loan_amnt`): montante financeiro total solicitado.
-- **Taxa de juros** (`loan_int_rate`): taxa de juros anual aplicada ao empréstimo (em percentual).
-- **Comprometimento da renda** (`loan_percent_income`): proporção entre o valor do empréstimo e a renda anual do solicitante.
+- **Valor do empréstimo** (`loan_amnt`): montante financeiro total contraído.
+- **Taxa de juros** (`loan_int_rate`): taxa de juros anual aplicada ao empréstimo.
+- **Comprometimento da renda** (`loan_percent_income`): proporção entre o valor do empréstimo e a renda anual do tomador de crédito.
 
 ## Informações de risco
 
@@ -201,14 +201,16 @@ medidas_descritivas |>
 colnames(credit_risk)
 ```
 
-Inspecionando brevemente as medidas, não há dados negativos, porém detecta-se problemas lógicos em duas variáveis: idade do solicitante e tempo no emprego atual.
+Inspecionando brevemente as medidas, não há dados negativos, porém detecta-se problemas lógicos em duas variáveis: idade do tomador e tempo no emprego atual.
 O máximo dessas variáveis revela outliers situados a uma distância consideravelmente alta do 3º quartil de suas respectivas distribuições, que torna o dado implausível quando
 confrontado com a natureza lógica da variável. Por exemplo, é biologicamente impossível que uma pessoa tenha mais de 140 anos ou
 tenha permanecido no mesmo emprego por `r max(credit_risk$person_emp_length, na.rm = TRUE)` anos.
 
-Alguns destes pontos discrepantes podem representar tanto erros de cadastro e mensuração
-como também possíveis pontos de alavancagem, como a exorbitante renda anual de `r max(credit_risk$person_income)`.
-É importante distinguir quais observações possuem dados inválidos e removê-las da base antes da análise exploratória começar.
+Alguns desses pontos discrepantes podem representar erros cadastrais e de
+mensuração ou, alternativamente, valores atípicos extremos legítimos, a exemplo
+da expressiva renda anual máxima observada de `r max(credit_risk$person_income)`.
+É fundamental distinguir quais observações possuem dados inválidos que justifiquem sua exclusão daquelas observações
+verídicas que apenas refletem a variabilidade natural da população, evitando a eliminação arbitrária de dados válidos.
 
 Começaremos então pela váriavel idade. A @fig-boxplot-age-preview apresenta a distribuição da variável
 por meio de um box plot.
@@ -216,7 +218,7 @@ por meio de um box plot.
 ```{r}
 #| out-width: 100%
 #| label: fig-boxplot-age-preview
-#| fig-cap: distribuição das idades dos solicitantes de crédito (prévia)
+#| fig-cap: Distribuição das idades dos tomadores de crédito (prévia)
 
 ggplot(credit_risk, aes(y = person_age)) +
     geom_boxplot(
@@ -234,7 +236,6 @@ ggplot(credit_risk, aes(y = person_age)) +
     ) +
     scale_y_continuous(breaks = seq(20, 140, by = 20)) +
     labs(
-        title = "Distribuição da idade por status de inadimplência",
         y = "Idade (anos)"
     ) +
     theme_minimal(base_size = 11)
@@ -249,7 +250,7 @@ na_person_age <- (credit_risk |> filter(person_age > 80) |> count())$n
 na_person_age_prop <- na_person_age / nrow(credit_risk)
 ```
 
-Os bancos operam prioritariamente com a faixa de 18 a 80 anos para concessão de crédito.
+As instituições financeiras operam prioritariamente com a faixa de 18 a 80 anos para concessão de crédito.
 O teto de 80 anos fundamenta-se nas práticas do mercado financeiro, no qual concessões acima dessa idade envolvem regras operacionais e limites estritos de elegibilidade securitária.
 Portanto, este critério será adotado neste trabalho. Como suporte adicional a essa decisão, identificou-se que apenas
 `r na_person_age` observações estão acima desse patamar (incluindo idades biologicamente inválidas),
@@ -264,7 +265,7 @@ apresentada na @fig-boxplot-person-emp-length-preview.
 ```{r}
 #| out-width: 100%
 #| label: fig-boxplot-person-emp-length-preview
-#| fig-cap: distribuição dos tempos no emprego dos solicitantes
+#| fig-cap: Distribuição dos tempos no emprego dos tomadores de crédito (prévia)
 
 ggplot(credit_risk |> na.omit(), aes(y = person_emp_length)) +
     geom_boxplot(
@@ -282,7 +283,6 @@ ggplot(credit_risk |> na.omit(), aes(y = person_emp_length)) +
     ) +
     scale_y_continuous(breaks = seq(20, 140, by = 20)) +
     labs(
-        title = "Distribuição dos tempos no emprego dos solicitantes de crédito",
         y = "Tempo de serviço (anos)"
     ) +
     theme_minimal(base_size = 11)
@@ -298,9 +298,9 @@ na_person_emp_length_prop <- na_person_emp_length / nrow(credit_risk)
 
 Mais uma vez, destacamos o teto de 80 anos na figura. Aqui podemos observar que
 os maiores tempos de serviço plausíveis vão até 45 anos. Existem
-`r na_person_emp_length` observações de tempos no emprego atual acima de 120 anos.
-Estas duas observações representam `r round(na_person_emp_length_prop * 100,
-2)`% da amostra e serão, pelo mesmo motivo discutido para a idade, removidas da base.
+`r na_person_emp_length` observações de tempo no emprego atual acima de 120 anos.
+Estas duas observações representam `r round(na_person_emp_length_prop * 100, 2)`%
+da amostra e serão, pelo mesmo motivo discutido para a idade, removidas da base.
 
 ```{r}
 #| label: credit-risk-clean
@@ -319,7 +319,7 @@ max_diff_ratio_loan_percent_income <- max(abs(credit_risk$loan_amnt / credit_ris
 Ainda no âmbito das inconsistências das idades, verificou-se que não havia
 observações em que a idade era inferior ao tempo no emprego atual e tampouco
 era inferior ao histórico de crédito. Por fim, foi calculada a razão entre o
-valor do empréstimo e a renda anual do solicitante e obteve-se a diferença absoluta com os valores correspondentes
+valor do empréstimo e a renda anual do tomador e obteve-se a diferença absoluta com os valores correspondentes
 da variável do comprometimento da renda. A maior diferença observada foi de
 `r max_diff_ratio_loan_percent_income`, possivelmente causado por erros
 de arredondamento. Por conveniência, optou-se por continuar utilizando a
@@ -409,17 +409,19 @@ medidas_descritivas |>
 
 ## Análise univariada
 
-Iremos agora nos restringir a uma análise individual de cada variável,
-em termos de distribuição geral, presença de pontos extremos e distribuição condicionada ao status da variável de interesse.
+Iremos agora nos restringir a uma análise individual de cada variável
+quantitativa, em termos de distribuição geral, presença de pontos extremos e distribuição condicionada ao status da variável de interesse.
+Em seguida, iremos tratar das variáveis qualitativas.
+
 Após esta etapa, prosseguiremos com uma análise conjunta das variáveis e
-finalizaremos nossa análise com um estudo de valores faltantes na base de dados.
+finalizaremos nossa exploração com um estudo de valores faltantes na base de dados.
 
 ### Idade
 
 ```{r}
 #| out-width: 100%
 #| label: fig-boxplot-age
-#| fig-cap: Distribuição das idades por status de inadimplência
+#| fig-cap: Distribuição das idades por desfecho da quitação da dívida
 
 ggplot(credit_risk_clean, aes(x = loan_status, y = person_age, fill = loan_status)) +
     geom_boxplot(
@@ -437,18 +439,20 @@ ggplot(credit_risk_clean, aes(x = loan_status, y = person_age, fill = loan_statu
     theme_minimal(base_size = 11)
 ```
 
-A @fig-boxplot-age mostra que a parte central das distribuições da idade dos solicitantes de crédito
+A @fig-boxplot-age mostra que a parte central das distribuições da idade dos tomadores de crédito
 entre os grupos de adimplentes e inadimplentes é muito similar.
 Ambos os grupos possuem outliers concentrados na parte superior da distribuição.
+Isto pode ser um indicativo de que a idade por si só não é tão informativa para
+saber se o tomador vai ou não quitar a dívida.
 
-Podemos observar pela @tbl-desc-analysis-summary que 75% dos solicitantes têm idade de
+Podemos observar pela @tbl-desc-analysis-summary que 75% dos tomadores têm idade de
 até `r medidas_descritivas |> filter(var_name == "person_age") |> select(q3) |> pull()` anos.
 Isso indica que a maioria dos tomadores de crédito nos dados são pessoas jovens.
 
 ```{r}
 #| out-width: 100%
 #| label: fig-hist-person-age
-#| fig-cap: Distribuição das idades dos solicitantes de crédito
+#| fig-cap: Distribuição das idades
 
 credit_risk_clean |>
     ggplot(aes(x = person_age)) +
@@ -460,21 +464,21 @@ credit_risk_clean |>
     )
 ```
 
-Ao avaliar a distribuição da idade dos solicitantes após o recorte, podemos observar pelo histograma da @fig-hist-person-age
+Ao avaliar o histograma da @fig-hist-person-age podemos notar
 que se trata de uma distribuição assimétrica à direita, em que a maioria dos
 empréstimos estão concentrados entre as classes de 20 e 40 anos, confirmando o
 que foi observado no parágrafo anterior.
 
 ### Renda anual
 
-Segundo a @tbl-desc-analysis-summary, a renda dos solicitantes é a variável
+Segundo a @tbl-desc-analysis-summary, a renda dos tomadores é a variável
 com maior variabilidade, com desvio padrão de cerca de
 `r (medidas_descritivas |> filter(var_name == "person_income"))$sd`.
 
 ```{r}
 #| out-width: 100%
 #| label: fig-boxplot-person-income
-#| fig-cap: Distribuição da renda anual dos solicitantes de crédito por status de inadimplência
+#| fig-cap: Distribuição da renda anual por desfecho de quitação da dívida
 
 credit_risk_clean |>
     na.omit() |>
@@ -495,13 +499,13 @@ credit_risk_clean |>
 
 A renda anual apresenta acentuada assimetria positiva, caracterizada por uma cauda longa e distante da mediana,
 evidenciada pela expressiva concentração de outliers na porção superior da @fig-boxplot-person-income.
-O coeficiente de curtose de `r round(moments::kurtosis(credit_risk_clean$person_income), 2)` atesta o padrão fortemente leptocúrtico da distribuição,
+O coeficiente de curtose de `r round(kurtosis(credit_risk_clean$person_income), 2)` atesta o padrão fortemente leptocúrtico da distribuição,
 confirmando o peso excessivo da cauda em relação a uma distribuição normal.
 
 Diante destes sintomas, investigou-se a distribuição da variável sob a transformação do logaritmo natural,
-já que a renda em sua escala bruta comprometeria
-qualquer modelo de regressão com seu alto grau de alavancagem. A justificativa é
-suportada principalmente por dois motivos. O primeiro e mais importante diz
+já que a renda em escala bruta quase certamente colocaria em
+risco o desempenho de qualquer modelo de regressão devido a um alto grau de alavancagem.
+A justificativa é suportada principalmente por dois motivos. O primeiro e mais importante diz
 respeito à teoria econômica que descreve que o ganho na capacidade de pagamento
 decorre de acréscimos percentuais na renda e não de aumentos nominais fixos. O
 segundo motivo é permitir a compressão da cauda longa e estabilização da escala,
@@ -526,7 +530,7 @@ gghist_person_income <- credit_risk_clean |>
     geom_histogram(bins = 15, fill = "#3182bd", color = "white", alpha = 0.8) +
     theme_minimal(base_size = 11) +
     labs(
-        x = "Renda anual",
+        x = "Tempo em anos",
         y = "Frequência"
     )
 
@@ -545,10 +549,276 @@ gghist_log_person_income
 ```
 
 
-A escala logarítmica reduz a curtose dos dados de `r kurtosis(credit_risk_clean$person_income)`
-para `r kurtosis(credit_risk_clean$log_person_income)`
-e possui um coeficiente de assimetria de `r skewness(credit_risk_clean$log_person_income)`, 
+A escala logarítmica reduz a curtose dos dados de `r round(kurtosis(credit_risk_clean$person_income), 2)`
+para `r round(kurtosis(credit_risk_clean$log_person_income, 2))`
+e possui um coeficiente de assimetria de `r round(skewness(credit_risk_clean$log_person_income), 2)`, 
 que descreve uma distribuição muito mais simétrica.
 
 A inspeção visual dos histogramas da @fig-hist-person-income-versus comprova a eficácia da
 transformação. O segundo histograma agora possui caudas muito mais leves se comparado ao primeiro.
+Esta transformação será considerada posteriormente.
+
+### Tempo no emprego atual
+
+As medidas descritivas do tempo no emprego dos tomadores de crédito da
+@tbl-desc-analysis-summary reflete que metade das pessoas permance no mesmo
+emprego por até `r (medidas_descritivas |> filter(var_name == "person_emp_length"))$median` anos.
+O terceiro quartil aponta que a maioria empréstimos é feita por pessoas que
+estão nos seus empregos há no máximo `r (medidas_descritivas |> filter(var_name == "person_emp_length"))$q3` anos.
+
+```{r}
+#| out-width: 100%
+#| label: fig-boxplot-person-emp-length
+#| fig-cap: Distribuição dos tempos no emprego do tomador por desfecho de quitação da dívida
+
+credit_risk_clean |>
+    na.omit() |>
+    ggplot(aes(x = loan_status, y = person_emp_length, fill = loan_status)) +
+    geom_boxplot(
+        outlier.color = "red",
+        outlier.size = 1,
+        width = 0.5,
+        show.legend = FALSE
+    ) +
+    scale_fill_manual(values = c("Adimplente" = "#9ecae1", "Inadimplente" = "#6baed6")) +
+    labs(
+        x = "Status de inadimplência",
+        y = "Renda anual"
+    ) +
+    theme_minimal(base_size = 11)
+```
+
+Esta variável também apresenta uma concentração superior de outliers que se
+estende até `r (medidas_descritivas |> filter(var_name == "person_emp_length"))$max` anos.
+Pela @fig-boxplot-person-emp-length, os adimplentes de crédito geralmente
+permanecem mais tempo nos seus empregos.
+
+```{r}
+#| out-width: 100%
+#| label: fig-bar-person-emp-length
+#| fig-cap: Distribuição dos tempos no emprego do tomador
+
+credit_risk_clean |>
+    na.omit() |>
+    ggplot(aes(x = person_emp_length)) +
+    geom_bar(fill = "#3182bd", color = "white", alpha = 0.8) +
+    theme_minimal(base_size = 11) +
+    labs(
+        x = "Tempo em anos",
+        y = "Frequência"
+    )
+```
+
+O gráfico de barras da @fig-bar-person-emp-length mostra que a variável possui
+uma distribuição assimétrica positiva, com cauda pesada à direita. Chama a
+atenção a manifestação de um fenômeno natural na variável: pessoas desempregadas
+são as que mais tomam empréstismos, e isso pode ser observado na figura.
+
+### Valor do empréstimo
+
+A média de empréstimos na base é de `r (medidas_descritivas |> filter(var_name == "loan_amnt"))$mean`.
+A mediana do segundo grupo da @fig-boxplot-loan-amnt indica que aqueles que não pagam costumam
+tomar empréstimos mais altos e com maior frequência do que aqueles que pagam (o que é sinalizado pela
+cercas de Tukey mais amplas do segundo grupo em conjunto com um menor número de
+outliers).
+
+```{r}
+#| out-width: 100%
+#| label: fig-boxplot-loan-amnt
+#| fig-cap: Distribuição dos empréstimos por desfecho de quitação da dívida
+
+credit_risk_clean |>
+    ggplot(aes(x = loan_status, y = loan_amnt, fill = loan_status)) +
+    geom_boxplot(
+        outlier.color = "red",
+        outlier.size = 1,
+        width = 0.5,
+        show.legend = FALSE
+    ) +
+    scale_fill_manual(values = c("Adimplente" = "#9ecae1", "Inadimplente" = "#6baed6")) +
+    labs(
+        x = "Status de inadimplência",
+        y = "Valor do empréstimo"
+    ) +
+    theme_minimal(base_size = 11)
+```
+
+
+```{r}
+#| out-width: 100%
+#| label: fig-hist-loan-amnt
+#| fig-cap: Distribuição dos empréstimos
+
+credit_risk_clean |>
+    ggplot(aes(x = loan_amnt)) +
+    geom_histogram(bins = 15, fill = "#3182bd", color = "white", alpha = 0.8) +
+    theme_minimal(base_size = 11) +
+    labs(
+        x = "Valor do empréstimo",
+        y = "Frequência"
+    )
+```
+
+O histograma aponta que a maior parte dos empréstimos estão concentrados na
+metade esquerda do gráfico. Há um número razoável de empréstimos de até 25 mil.
+Concessão de empréstimos acima desse valor decaem drasticamente.
+
+### Taxa de juros
+
+A relação da taxa de juros com o status de inadimplência é bem clara. Como
+exibido na @fig-boxplot-loan-int-rate, o grupo de inadimplementes, por
+representarem um risco maior às instituições financeiras, contraem empréstimos
+com taxas de juros significativamente mais altas se comparado com o grupo dos
+que pagam em dia.
+
+```{r}
+#| out-width: 100%
+#| label: fig-boxplot-loan-int-rate
+#| fig-cap: Distribuição das taxas de juros dos empréstimos contratados por desfecho de quitação da dívida
+
+credit_risk_clean |>
+    na.omit() |>
+    ggplot(aes(x = loan_status, y = loan_int_rate, fill = loan_status)) +
+    geom_boxplot(
+        outlier.color = "red",
+        outlier.size = 1,
+        width = 0.5,
+        show.legend = FALSE
+    ) +
+    scale_fill_manual(values = c("Adimplente" = "#9ecae1", "Inadimplente" = "#6baed6")) +
+    labs(
+        x = "Status de inadimplência",
+        y = "Taxa de juros"
+    ) +
+    theme_minimal(base_size = 11)
+```
+
+Já o histograma da taxa de juros demonstra que esta variável poussi uma
+assimetria positiva bem mais atenuada e uma cauda direta mais suave.
+
+```{r}
+#| out-width: 100%
+#| label: fig-hist-loan-int-rate
+#| fig-cap: Distribuição das taxas de juros dos empréstimos contratados
+
+credit_risk_clean |>
+    na.omit() |>
+    ggplot(aes(x = loan_int_rate)) +
+    geom_histogram(bins = 12, fill = "#3182bd", color = "white", alpha = 0.8) +
+    theme_minimal(base_size = 11) +
+    labs(
+        x = "Taxa de juros",
+        y = "Frequência"
+    )
+```
+
+
+### Comprometimento da renda
+
+Em relação ao comprometimento da renda, que é a razão entre o valor do
+empréstimo sobre a renda anual do indivíduo, podemos observar pela
+@fig-boxplot-loan-percent-income que as pessoas que não quitaram seus
+empréstimos comprometem mais a sua renda quando contraem esses empréstimos se
+comparado com os grupos que quitaram a dívida. É um comportamento semelhante a
+da taxa de juros, em que os 3 quartis do segundo grupo são maiores que os do
+primeiro.
+
+```{r}
+#| out-width: 100%
+#| label: fig-boxplot-loan-percent-income
+#| fig-cap: Distribuição do comprometimento da renda por desfecho da quitação da dívida
+
+credit_risk_clean |>
+    na.omit() |>
+    ggplot(aes(x = loan_status, y = loan_percent_income, fill = loan_status)) +
+    geom_boxplot(
+        outlier.color = "red",
+        outlier.size = 1,
+        width = 0.5,
+        show.legend = FALSE
+    ) +
+    scale_fill_manual(values = c("Adimplente" = "#9ecae1", "Inadimplente" = "#6baed6")) +
+    labs(
+        x = "Status de inadimplência",
+        y = "Comprometimento da renda"
+    ) +
+    theme_minimal(base_size = 11)
+```
+
+Enquanto os adimplentes costumam comprometer até 40% de suas rendas, os
+inadimplementes comprometem até um pouco mais de 60% de suas rendas. Isto sem
+levar em conta os pontos exteriores (possíveis outliers). 
+
+Embora a tabela de medidas descritivas revele que há empréstimos que podem
+chegar a comprometer até
+`r (medidas_descritivas |> filter(var_name == "loan_percent_income"))$max * 100`%
+da renda do tomador. O histograma da distribuição mostra que no geral a
+maior parte dos empréstimos comprometem até metade da renda anual dos tomadores.
+
+```{r}
+#| out-width: 100%
+#| label: fig-hist-loan-percent-income
+#| fig-cap: Distribuição do comprometimento da renda
+
+credit_risk_clean |>
+    na.omit() |>
+    ggplot(aes(x = loan_percent_income)) +
+    geom_histogram(bins = 12, fill = "#3182bd", color = "white", alpha = 0.8) +
+    theme_minimal(base_size = 11) +
+    labs(
+        x = "Comprometimento da renda",
+        y = "Frequência"
+    )
+```
+
+
+### Histórico de crédito
+
+O histórico de crédito médio dos tomadores de crédito é de cerca de
+`r (medidas_descritivas |> filter(var_name == "cb_person_cred_hist_length"))$mean` anos
+com desvio padrão de `r (medidas_descritivas |> filter(var_name == "cb_person_cred_hist_length"))$sd` anos,
+de acordo com as medidas descritivas da @tbl-desc-analysis-summary, 
+No geral a distribuição da variável é bastante semelhante entre os dois grupos
+(@fig-boxplot-cb-person-cred-hist-length).
+
+```{r}
+#| out-width: 100%
+#| label: fig-boxplot-cb-person-cred-hist-length
+#| fig-cap: Distribuição do histórico de crédito por desfecho da quitação da dívida
+
+credit_risk_clean |>
+    na.omit() |>
+    ggplot(aes(x = loan_status, y = cb_person_cred_hist_length, fill = loan_status)) +
+    geom_boxplot(
+        outlier.color = "red",
+        outlier.size = 1,
+        width = 0.5,
+        show.legend = FALSE
+    ) +
+    scale_fill_manual(values = c("Adimplente" = "#9ecae1", "Inadimplente" = "#6baed6")) +
+    labs(
+        x = "Status de inadimplência",
+        y = "Histórico de crédito (anos)"
+    ) +
+    theme_minimal(base_size = 11)
+```
+
+O histórico mais longo observado é de `r (medidas_descritivas |> filter(var_name == "cb_person_cred_hist_length"))$max` anos.
+O histograma da @fig-hist-cb-person-cred-hist-length mostra que a distribuição
+de frequências do histórico de crédito é monótona decrescente.
+
+```{r}
+#| out-width: 100%
+#| label: fig-hist-cb-person-cred-hist-length
+#| fig-cap: Distribuição do histórico de crédito
+
+credit_risk_clean |>
+    na.omit() |>
+    ggplot(aes(x = cb_person_cred_hist_length)) +
+    geom_histogram(bins = 12, fill = "#3182bd", color = "white", alpha = 0.8) +
+    theme_minimal(base_size = 11) +
+    labs(
+        x = "Histórico de crédito (anos)",
+        y = "Frequência"
+    )
+```
