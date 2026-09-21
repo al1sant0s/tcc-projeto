@@ -36,7 +36,7 @@ p {
 ```{r}
 #| echo: false
 library("pacman")
-p_load("tidyverse", "rio", "gt", "labelled", "moments")
+p_load("tidyverse", "rio", "gt", "labelled", "moments", "janitor")
 options(scipen = 999)
 ```
 
@@ -86,9 +86,9 @@ nomes_legiveis <- c(
     "loan_grade" = "Nível de risco",
     "loan_amnt" = "Valor do empréstimo",
     "loan_int_rate" = "Taxa de juros",
-    "loan_status" = "Status de inadimplência",
+    "loan_status" = "Situação do empréstimo",
     "loan_percent_income" = "Comprometimento da renda",
-    "cb_person_default_on_file" = "Inadimplência anterior",
+    "cb_person_default_on_file" = "Registro de inadimplência anterior",
     "cb_person_cred_hist_length" = "Histórico de crédito (anos)"
 )
 
@@ -143,7 +143,7 @@ Por fim, as seguintes variáveis associadas ao histórico de crédito estão dis
 
 - **Inadimplência anterior** (`cb_person_default_on_file`): presença de registro de inadimplência prévia em birôs de crédito ("Sim" ou "Não").
 - **Histórico de crédito** (`cb_person_cred_hist_length`): tempo decorrido do primeiro registro de crédito em birôs (em anos).
-- **Status de inadimplência** (`loan_status`): variável de interesse (resposta), que indica o desfecho do pagamento do empréstimo ($0$ para adimplente/quitado e $1$ para inadimplente/*default*).
+- **Situação do empréstimo** (`loan_status`): variável de interesse (resposta), que indica o desfecho do pagamento do empréstimo ($0$ para adimplente/quitado e $1$ para inadimplente/*default*).
 
 # Análise exploratória
 
@@ -156,7 +156,7 @@ rapidamente identificar possíveis inconsistências na base de dados.
 
 ```{r}
 #| label: tbl-desc-analysis-summary-preview
-#| tbl-cap: medidas descritivas
+#| tbl-cap: Medidas descritivas
 
 medidas_descritivas <- credit_risk |>
     select(all_of(numericas)) |>
@@ -363,7 +363,7 @@ variáveis quantitativas que é apresentada na @tbl-desc-analysis-summary.
 
 ```{r}
 #| label: tbl-desc-analysis-summary
-#| tbl-cap: medidas descritivas
+#| tbl-cap: Medidas descritivas
 
 medidas_descritivas <- credit_risk_clean |>
     select(all_of(numericas)) |>
@@ -407,7 +407,7 @@ medidas_descritivas |>
 ```
 
 
-## Análise univariada
+## Análise individual
 
 Iremos agora nos restringir a uma análise individual de cada variável
 quantitativa, em termos de distribuição geral, presença de pontos extremos e distribuição condicionada ao status da variável de interesse.
@@ -421,7 +421,7 @@ finalizaremos nossa exploração com um estudo de valores faltantes na base de d
 ```{r}
 #| out-width: 100%
 #| label: fig-boxplot-age
-#| fig-cap: Distribuição das idades por desfecho da quitação da dívida
+#| fig-cap: Distribuição das idades por situação de empréstimo
 
 ggplot(credit_risk_clean, aes(x = loan_status, y = person_age, fill = loan_status)) +
     geom_boxplot(
@@ -433,7 +433,7 @@ ggplot(credit_risk_clean, aes(x = loan_status, y = person_age, fill = loan_statu
     scale_y_continuous(breaks = seq(20, 140, by = 20)) +
     scale_fill_manual(values = c("Adimplente" = "#9ecae1", "Inadimplente" = "#6baed6")) +
     labs(
-        x = "Status de inadimplência",
+        x = "Situação do empréstimo",
         y = "Idade (anos)"
     ) +
     theme_minimal(base_size = 11)
@@ -456,7 +456,7 @@ Isso indica que a maioria dos tomadores de crédito nos dados são pessoas joven
 
 credit_risk_clean |>
     ggplot(aes(x = person_age)) +
-    geom_histogram(binwidth = 5, fill = "#3182bd", color = "white", alpha = 0.8) +
+    geom_histogram(binwidth = 5, fill = "steelblue", color = "white", alpha = 0.8) +
     theme_minimal(base_size = 11) +
     labs(
         x = "Idade",
@@ -478,7 +478,7 @@ com maior variabilidade, com desvio padrão de cerca de
 ```{r}
 #| out-width: 100%
 #| label: fig-boxplot-person-income
-#| fig-cap: Distribuição da renda anual por desfecho de quitação da dívida
+#| fig-cap: Distribuição da renda anual por situação de empréstimo
 
 credit_risk_clean |>
     na.omit() |>
@@ -491,7 +491,7 @@ credit_risk_clean |>
     ) +
     scale_fill_manual(values = c("Adimplente" = "#9ecae1", "Inadimplente" = "#6baed6")) +
     labs(
-        x = "Status de inadimplência",
+        x = "Situação do empréstimo",
         y = "Renda anual"
     ) +
     theme_minimal(base_size = 11)
@@ -527,7 +527,7 @@ credit_risk_clean <- credit_risk_clean |>
 gghist_person_income <- credit_risk_clean |>
     na.omit() |>
     ggplot(aes(x = person_income)) +
-    geom_histogram(bins = 15, fill = "#3182bd", color = "white", alpha = 0.8) +
+    geom_histogram(bins = 15, fill = "steelblue", color = "white", alpha = 0.8) +
     theme_minimal(base_size = 11) +
     labs(
         x = "Tempo em anos",
@@ -537,7 +537,7 @@ gghist_person_income <- credit_risk_clean |>
 gghist_log_person_income <- credit_risk_clean |>
     na.omit() |>
     ggplot(aes(x = log_person_income)) +
-    geom_histogram(bins = 15, fill = "#3182bd", color = "white", alpha = 0.8) +
+    geom_histogram(bins = 15, fill = "steelblue", color = "white", alpha = 0.8) +
     theme_minimal(base_size = 11) +
     labs(
         x = "ln(renda anual)",
@@ -569,7 +569,7 @@ estão nos seus empregos há no máximo `r (medidas_descritivas |> filter(var_na
 ```{r}
 #| out-width: 100%
 #| label: fig-boxplot-person-emp-length
-#| fig-cap: Distribuição dos tempos no emprego do tomador por desfecho de quitação da dívida
+#| fig-cap: Distribuição dos tempos no emprego do tomador por situação de empréstimo
 
 credit_risk_clean |>
     na.omit() |>
@@ -582,7 +582,7 @@ credit_risk_clean |>
     ) +
     scale_fill_manual(values = c("Adimplente" = "#9ecae1", "Inadimplente" = "#6baed6")) +
     labs(
-        x = "Status de inadimplência",
+        x = "Situação do empréstimo",
         y = "Renda anual"
     ) +
     theme_minimal(base_size = 11)
@@ -601,7 +601,7 @@ permanecem mais tempo nos seus empregos.
 credit_risk_clean |>
     na.omit() |>
     ggplot(aes(x = person_emp_length)) +
-    geom_bar(fill = "#3182bd", color = "white", alpha = 0.8) +
+    geom_bar(fill = "steelblue", color = "white", alpha = 0.8) +
     theme_minimal(base_size = 11) +
     labs(
         x = "Tempo em anos",
@@ -625,7 +625,7 @@ outliers).
 ```{r}
 #| out-width: 100%
 #| label: fig-boxplot-loan-amnt
-#| fig-cap: Distribuição dos empréstimos por desfecho de quitação da dívida
+#| fig-cap: Distribuição dos empréstimos por situação de empréstimo
 
 credit_risk_clean |>
     ggplot(aes(x = loan_status, y = loan_amnt, fill = loan_status)) +
@@ -637,7 +637,7 @@ credit_risk_clean |>
     ) +
     scale_fill_manual(values = c("Adimplente" = "#9ecae1", "Inadimplente" = "#6baed6")) +
     labs(
-        x = "Status de inadimplência",
+        x = "Situação do empréstimo",
         y = "Valor do empréstimo"
     ) +
     theme_minimal(base_size = 11)
@@ -651,7 +651,7 @@ credit_risk_clean |>
 
 credit_risk_clean |>
     ggplot(aes(x = loan_amnt)) +
-    geom_histogram(bins = 15, fill = "#3182bd", color = "white", alpha = 0.8) +
+    geom_histogram(bins = 15, fill = "steelblue", color = "white", alpha = 0.8) +
     theme_minimal(base_size = 11) +
     labs(
         x = "Valor do empréstimo",
@@ -674,7 +674,7 @@ que pagam em dia.
 ```{r}
 #| out-width: 100%
 #| label: fig-boxplot-loan-int-rate
-#| fig-cap: Distribuição das taxas de juros dos empréstimos contratados por desfecho de quitação da dívida
+#| fig-cap: Distribuição das taxas de juros dos empréstimos contratados por situação de empréstimo
 
 credit_risk_clean |>
     na.omit() |>
@@ -687,7 +687,7 @@ credit_risk_clean |>
     ) +
     scale_fill_manual(values = c("Adimplente" = "#9ecae1", "Inadimplente" = "#6baed6")) +
     labs(
-        x = "Status de inadimplência",
+        x = "Situação do empréstimo",
         y = "Taxa de juros"
     ) +
     theme_minimal(base_size = 11)
@@ -704,7 +704,7 @@ assimetria positiva bem mais atenuada e uma cauda direta mais suave.
 credit_risk_clean |>
     na.omit() |>
     ggplot(aes(x = loan_int_rate)) +
-    geom_histogram(bins = 12, fill = "#3182bd", color = "white", alpha = 0.8) +
+    geom_histogram(bins = 12, fill = "steelblue", color = "white", alpha = 0.8) +
     theme_minimal(base_size = 11) +
     labs(
         x = "Taxa de juros",
@@ -726,7 +726,7 @@ primeiro.
 ```{r}
 #| out-width: 100%
 #| label: fig-boxplot-loan-percent-income
-#| fig-cap: Distribuição do comprometimento da renda por desfecho da quitação da dívida
+#| fig-cap: Distribuição do comprometimento da renda por situação de empréstimo
 
 credit_risk_clean |>
     na.omit() |>
@@ -739,7 +739,7 @@ credit_risk_clean |>
     ) +
     scale_fill_manual(values = c("Adimplente" = "#9ecae1", "Inadimplente" = "#6baed6")) +
     labs(
-        x = "Status de inadimplência",
+        x = "Situação do empréstimo",
         y = "Comprometimento da renda"
     ) +
     theme_minimal(base_size = 11)
@@ -763,7 +763,7 @@ maior parte dos empréstimos comprometem até metade da renda anual dos tomadore
 credit_risk_clean |>
     na.omit() |>
     ggplot(aes(x = loan_percent_income)) +
-    geom_histogram(bins = 12, fill = "#3182bd", color = "white", alpha = 0.8) +
+    geom_histogram(bins = 12, fill = "steelblue", color = "white", alpha = 0.8) +
     theme_minimal(base_size = 11) +
     labs(
         x = "Comprometimento da renda",
@@ -784,7 +784,7 @@ No geral a distribuição da variável é bastante semelhante entre os dois grup
 ```{r}
 #| out-width: 100%
 #| label: fig-boxplot-cb-person-cred-hist-length
-#| fig-cap: Distribuição do histórico de crédito por desfecho da quitação da dívida
+#| fig-cap: Distribuição do histórico de crédito por situação de empréstimo
 
 credit_risk_clean |>
     na.omit() |>
@@ -797,7 +797,7 @@ credit_risk_clean |>
     ) +
     scale_fill_manual(values = c("Adimplente" = "#9ecae1", "Inadimplente" = "#6baed6")) +
     labs(
-        x = "Status de inadimplência",
+        x = "Situação do empréstimo",
         y = "Histórico de crédito (anos)"
     ) +
     theme_minimal(base_size = 11)
@@ -815,10 +815,307 @@ de frequências do histórico de crédito é monótona decrescente.
 credit_risk_clean |>
     na.omit() |>
     ggplot(aes(x = cb_person_cred_hist_length)) +
-    geom_histogram(bins = 12, fill = "#3182bd", color = "white", alpha = 0.8) +
+    geom_histogram(bins = 12, fill = "steelblue", color = "white", alpha = 0.8) +
     theme_minimal(base_size = 11) +
     labs(
         x = "Histórico de crédito (anos)",
         y = "Frequência"
     )
 ```
+
+Agora vamos analisar as variáveis qualitativas.
+
+### Tipo de moradia
+
+```{r}
+#| out-width: 100%
+#| label: fig-hbar-person-home-ownership
+#| fig-cap: Distribuição do tipo de moradia
+
+#dist_freq_person_home_ownership <- credit_risk_clean |>
+#    count(person_home_ownership) |>
+#    mutate(ncum = cumsum(n)) |>
+#    mutate(perc = round(n/sum(n) * 100, digits = 4)) |>
+#    mutate(perccum = round(cumsum(perc), digits = 4))
+#
+#ggplot(dist_freq_person_home_ownership, aes(x = "", y = perc, fill = person_home_ownership)) +
+#    geom_bar(stat = "identity", width = 1, color = "white") +
+#    coord_polar("y", start = 1.5) +
+#    theme_void() +
+#    geom_text(aes(label = round(perc, 2)), position = position_stack(vjust = 0.5), color = "black", fontface = "bold") +
+#    scale_fill_brewer(
+#        palette="Dark2",
+#        labels = c(
+#            "RENT"     = "Alugada",
+#            "OWN"      = "Própria",
+#            "MORTGAGE" = "Financiada",
+#            "OTHER"    = "Outro"
+#        )
+#    ) +
+#    labs(fill = "Tipo de moradia")
+
+ggplot(credit_risk_clean, aes(y = fct_rev(fct_infreq(person_home_ownership)))) +
+  geom_bar(fill = "steelblue", width = 0.7) +
+  scale_y_discrete(
+    labels = c(
+        "RENT"         = "Alugada",
+        "MORTGAGE"     = "Financiada",
+        "OWN"          = "Própria",
+        "OTHER"        = "Outro"
+    )
+  ) +
+  theme_minimal(base_size = 11) +
+  theme(
+    panel.grid.major.y = element_blank(),
+    panel.grid.minor = element_blank()
+  ) +
+  labs(
+    x = "Quantidade de empréstimos",
+    y = "Tipo de moradia"
+  )
+```
+
+
+
+```{r}
+#| out-width: 100%
+#| label: tbl-dblentry-person-home-owner-ship
+#| tbl-cap: Distribuição conjunta das proporções da situação de empréstimo conforme o tipo de moradia do tomador
+
+tbl_contigency <- credit_risk_clean |>
+    mutate(
+        person_home_ownership = fct_recode(
+            person_home_ownership,
+            "Alugada"       = "RENT",
+            "Própria"       = "OWN",
+            "Financiada"    = "MORTGAGE",
+            "Outro"         = "OTHER"
+        )
+    ) |>
+    tabyl(person_home_ownership, loan_status) |> 
+    adorn_totals("col", name = "Total") |>
+    mutate(across(-1, \(x) round(x * 100 / Total, 2)))
+
+tbl_contigency |>
+    gt(rowname_col = "person_home_ownership") |>
+    tab_stubhead("Tipo de moradia") |>
+    tab_spanner(
+        columns = c("Adimplente", "Inadimplente", "Total"),
+        label = "Situação do empréstimo (%)"
+    ) |>
+    cols_align(align = "center", columns = everything()) |>
+    tab_options(
+        table.width = "65%",
+        column_labels.font.weight = "bold",
+        column_labels.padding = "10px"
+    ) |>
+    tab_source_note(
+        source_note = md("**Fonte**: base de dados.")
+    )
+```
+
+### Finalidade do empréstimo
+
+
+```{r}
+#| out-width: 100%
+#| label: fig-hbar-loan-intent
+#| fig-cap: Distribuição da finalidade do empréstimo
+
+ggplot(credit_risk_clean, aes(y = fct_rev(fct_infreq(loan_intent)))) +
+  geom_bar(fill = "steelblue", width = 0.7) +
+  scale_y_discrete(
+    labels = c(
+        "PERSONAL"          = "Uso pessoal",
+        "EDUCATION"         = "Educacional",
+        "MEDICAL"           = "Despesas médicas",
+        "VENTURE"           = "Empreendimento",
+        "HOMEIMPROVEMENT"   = "Reforma de imóvel",
+        "DEBTCONSOLIDATION" = "Quitação de dívidas"
+    )
+  ) +
+  theme_minimal(base_size = 11) +
+  theme(
+    panel.grid.major.y = element_blank(),
+    panel.grid.minor = element_blank()
+  ) +
+  labs(
+    x = "Quantidade de empréstimos",
+    y = "Finalidade"
+  )
+```
+
+
+
+```{r}
+#| out-width: 100%
+#| label: tbl-dblentry-loan-intent
+#| tbl-cap: Distribuição conjunta das proporções da situação de empréstimo conforme a finalidade
+
+tbl_contigency <- credit_risk_clean |>
+    mutate(
+        loan_intent = fct_recode(
+            loan_intent,
+            "Uso pessoal"           = "PERSONAL",
+            "Educacional"           = "EDUCATION",
+            "Despesas médicas"      = "MEDICAL",
+            "Empreendimento"        = "VENTURE",
+            "Reforma de imóvel"     = "HOMEIMPROVEMENT",
+            "Quitação de dívidas"   = "DEBTCONSOLIDATION"
+        )
+    ) |>
+    tabyl(loan_intent, loan_status) |> 
+    adorn_totals("col", name = "Total") |>
+    mutate(across(-1, \(x) round(x * 100 / Total, 2)))
+
+tbl_contigency |>
+    gt(rowname_col = "loan_intent") |>
+    tab_stubhead("Finalidade") |>
+    tab_spanner(
+        columns = c("Adimplente", "Inadimplente", "Total"),
+        label = "Situação do empréstimo (%)"
+    ) |>
+    cols_align(align = "center", columns = everything()) |>
+    tab_options(
+        table.width = "65%",
+        column_labels.font.weight = "bold",
+        column_labels.padding = "10px"
+    ) |>
+    tab_source_note(
+        source_note = md("**Fonte**: base de dados.")
+    )
+```
+
+### Classificação de risco
+
+```{r}
+#| out-width: 100%
+#| label: fig-hbar-loan-grade
+#| fig-cap: Distribuição da classificação de risco
+
+ggplot(credit_risk_clean, aes(y = fct_rev(fct_infreq(loan_grade)))) +
+  geom_bar(fill = "steelblue", width = 0.7) +
+  scale_y_discrete(
+    labels = c(
+        "PERSONAL"          = "Uso pessoal",
+        "EDUCATION"         = "Educacional",
+        "MEDICAL"           = "Despesas médicas",
+        "VENTURE"           = "Empreendimento",
+        "HOMEIMPROVEMENT"   = "Reforma de imóvel",
+        "DEBTCONSOLIDATION" = "Quitação de dívidas"
+    )
+  ) +
+  theme_minimal(base_size = 11) +
+  theme(
+    panel.grid.major.y = element_blank(),
+    panel.grid.minor = element_blank()
+  ) +
+  labs(
+    x = "Quantidade de empréstimos",
+    y = "Risco"
+  )
+```
+
+
+
+```{r}
+#| out-width: 100%
+#| label: tbl-dblentry-loan_grade
+#| tbl-cap: Distribuição conjunta das proporções da situação de empréstimo conforme a classificação de risco
+
+tbl_contigency <- credit_risk_clean |>
+    tabyl(loan_grade, loan_status) |> 
+    adorn_totals("col", name = "Total") |>
+    mutate(across(-1, \(x) round(x * 100 / Total, 2)))
+
+tbl_contigency |>
+    gt(rowname_col = "loan_grade") |>
+    tab_stubhead("Risco") |>
+    tab_spanner(
+        columns = c("Adimplente", "Inadimplente", "Total"),
+        label = "Situação do empréstimo (%)"
+    ) |>
+    cols_align(align = "center", columns = everything()) |>
+    tab_options(
+        table.width = "65%",
+        column_labels.font.weight = "bold",
+        column_labels.padding = "10px"
+    ) |>
+    tab_source_note(
+        source_note = md("**Fonte**: base de dados.")
+    )
+```
+
+### Registro de inadimplência anterior
+
+```{r}
+#| label: cb-person-default-on-file
+
+count_cb_person_default_on_file <- credit_risk_clean |>
+    count(cb_person_default_on_file) |>
+    mutate(perc = n * 100 / sum(n))
+
+count_cb_person_default_on_file_yes <- count_cb_person_default_on_file |>
+    filter(cb_person_default_on_file == "Y")
+
+count_cb_person_default_on_file_no <- count_cb_person_default_on_file |>
+    filter(cb_person_default_on_file == "N")
+```
+
+Cerca de `r (count_cb_person_default_on_file_yes$n)` (`r round(count_cb_person_default_on_file_yes$perc, 2)`%) dos empréstimos
+concedidos a pessoas que já possuíam registro de inadimplência em seus históricos, enquanto que
+`r (count_cb_person_default_on_file_no$n)` (`r round(count_cb_person_default_on_file_no$perc, 2)`%) dos empréstimos foram concedidos
+a pessoas que sempre pagam em dia.
+
+```{r}
+#| out-width: 100%
+#| label: tbl-dblentry-cb-person-default-on-file
+#| tbl-cap: Distribuição conjunta das proporções da situação de empréstimo conforme o registro de inadimplência anterior
+
+tbl_contigency <- credit_risk_clean |>
+    mutate(cb_person_default_on_file = fct_rev(fct_recode(cb_person_default_on_file, "Sim" = "Y", "Não" = "N"))) |>
+    tabyl(cb_person_default_on_file, loan_status) |> 
+    adorn_totals("col", name = "Total") |>
+    mutate(across(-1, \(x) round(x * 100 / Total, 2)))
+
+tbl_contigency |>
+    gt(rowname_col = "cb_person_default_on_file") |>
+    tab_stubhead("Registro") |>
+    tab_spanner(
+        columns = c("Adimplente", "Inadimplente", "Total"),
+        label = "Situação do empréstimo (%)"
+    ) |>
+    cols_align(align = "center", columns = everything()) |>
+    tab_options(
+        table.width = "65%",
+        column_labels.font.weight = "bold",
+        column_labels.padding = "10px"
+    ) |>
+    tab_source_note(
+        source_note = md("**Fonte**: base de dados.")
+    )
+```
+
+### Situação do empréstimo
+
+```{r}
+#| label: loan-status
+
+count_loan_status <- credit_risk_clean |>
+    count(loan_status) |>
+    mutate(perc = n * 100 / sum(n))
+
+count_loan_status_default <- count_loan_status |>
+    filter(loan_status == "Inadimplente")
+
+count_loan_status_paid <- count_loan_status |>
+    filter(loan_status == "Adimplente")
+```
+
+
+Nossa variável de interesse indica que `r (count_loan_status_default$n)` (`r round(count_loan_status_default$perc, 2)`%) dos empréstimos concedidos
+tiveram um desfecho de inadimplência na base de dados.
+
+## Análise conjunta
+
+
