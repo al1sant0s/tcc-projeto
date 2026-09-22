@@ -23,6 +23,7 @@ format:
     code-tools: true
     number-sections: true
     embed-resources: true
+docx: default
 editor: source
 ---
 
@@ -130,7 +131,7 @@ Em relação às características da operação de crédito, constam as seguinte
     - educacional;
     - despesas médicas;
     - empreendimento;
-    - reforma de imóvel;
+    - reforma imobiliária;
     - quitação de dívidas.
 - **Classificação de risco** (`loan_grade`): classificação atribuída à operação numa escala ordinal de "A" (menor risco) a "G" (maior risco).
 - **Valor do empréstimo** (`loan_amnt`): montante financeiro total contraído.
@@ -418,6 +419,13 @@ finalizaremos nossa exploração com um estudo de valores faltantes na base de d
 
 ### Idade
 
+A @fig-boxplot-age mostra que a parte central das distribuições da idade dos tomadores de crédito
+entre os grupos de adimplentes e inadimplentes é muito similar.
+Ambos os grupos possuem outliers concentrados na parte superior da distribuição.
+Isto pode ser um indicativo de que a idade por si só não é tão informativa para
+saber se o tomador vai ou não quitar a dívida.
+
+
 ```{r}
 #| out-width: 100%
 #| label: fig-boxplot-age
@@ -439,15 +447,14 @@ ggplot(credit_risk_clean, aes(x = loan_status, y = person_age, fill = loan_statu
     theme_minimal(base_size = 11)
 ```
 
-A @fig-boxplot-age mostra que a parte central das distribuições da idade dos tomadores de crédito
-entre os grupos de adimplentes e inadimplentes é muito similar.
-Ambos os grupos possuem outliers concentrados na parte superior da distribuição.
-Isto pode ser um indicativo de que a idade por si só não é tão informativa para
-saber se o tomador vai ou não quitar a dívida.
-
 Podemos observar pela @tbl-desc-analysis-summary que 75% dos tomadores têm idade de
 até `r medidas_descritivas |> filter(var_name == "person_age") |> select(q3) |> pull()` anos.
 Isso indica que a maioria dos tomadores de crédito nos dados são pessoas jovens.
+
+Ao avaliar o histograma da @fig-hist-person-age podemos notar
+que se trata de uma distribuição assimétrica à direita, em que a maioria dos
+empréstimos estão concentrados entre as classes de 20 e 40 anos, confirmando o
+que foi observado no parágrafo anterior.
 
 ```{r}
 #| out-width: 100%
@@ -464,16 +471,16 @@ credit_risk_clean |>
     )
 ```
 
-Ao avaliar o histograma da @fig-hist-person-age podemos notar
-que se trata de uma distribuição assimétrica à direita, em que a maioria dos
-empréstimos estão concentrados entre as classes de 20 e 40 anos, confirmando o
-que foi observado no parágrafo anterior.
-
 ### Renda anual
 
 Segundo a @tbl-desc-analysis-summary, a renda dos tomadores é a variável
 com maior variabilidade, com desvio padrão de cerca de
-`r (medidas_descritivas |> filter(var_name == "person_income"))$sd`.
+`r round((medidas_descritivas |> filter(var_name == "person_income"))$sd, 0)`.
+
+A renda anual apresenta acentuada assimetria positiva, caracterizada por uma cauda longa e distante da mediana,
+evidenciada pela expressiva concentração de outliers na porção superior da @fig-boxplot-person-income.
+O coeficiente de curtose de `r round(kurtosis(credit_risk_clean$person_income), 2)` atesta o padrão fortemente leptocúrtico da distribuição,
+confirmando o peso excessivo da cauda em relação a uma distribuição normal.
 
 ```{r}
 #| out-width: 100%
@@ -497,11 +504,6 @@ credit_risk_clean |>
     theme_minimal(base_size = 11)
 ```
 
-A renda anual apresenta acentuada assimetria positiva, caracterizada por uma cauda longa e distante da mediana,
-evidenciada pela expressiva concentração de outliers na porção superior da @fig-boxplot-person-income.
-O coeficiente de curtose de `r round(kurtosis(credit_risk_clean$person_income), 2)` atesta o padrão fortemente leptocúrtico da distribuição,
-confirmando o peso excessivo da cauda em relação a uma distribuição normal.
-
 Diante destes sintomas, investigou-se a distribuição da variável sob a transformação do logaritmo natural,
 já que a renda em escala bruta quase certamente colocaria em
 risco o desempenho de qualquer modelo de regressão devido a um alto grau de alavancagem.
@@ -511,6 +513,9 @@ decorre de acréscimos percentuais na renda e não de aumentos nominais fixos. O
 segundo motivo é permitir a compressão da cauda longa e estabilização da escala,
 procedimento plenamente viabilizado pela ausência de valores nulos ou negativos
 na distribuição empírica da variável.
+
+A inspeção visual dos histogramas da @fig-hist-person-income-versus comprova a eficácia da
+transformação. O segundo histograma agora possui caudas muito mais leves se comparado ao primeiro.
 
 ```{r}
 #| out-width: 100%
@@ -548,15 +553,11 @@ gghist_person_income
 gghist_log_person_income
 ```
 
-
 A escala logarítmica reduz a curtose dos dados de `r round(kurtosis(credit_risk_clean$person_income), 2)`
 para `r round(kurtosis(credit_risk_clean$log_person_income, 2))`
 e possui um coeficiente de assimetria de `r round(skewness(credit_risk_clean$log_person_income), 2)`, 
 que descreve uma distribuição muito mais simétrica.
 
-A inspeção visual dos histogramas da @fig-hist-person-income-versus comprova a eficácia da
-transformação. O segundo histograma agora possui caudas muito mais leves se comparado ao primeiro.
-Esta transformação será considerada posteriormente.
 
 ### Tempo no emprego atual
 
@@ -565,6 +566,11 @@ As medidas descritivas do tempo no emprego dos tomadores de crédito da
 emprego por até `r (medidas_descritivas |> filter(var_name == "person_emp_length"))$median` anos.
 O terceiro quartil aponta que a maioria empréstimos é feita por pessoas que
 estão nos seus empregos há no máximo `r (medidas_descritivas |> filter(var_name == "person_emp_length"))$q3` anos.
+
+Esta variável também apresenta uma concentração superior de outliers que se
+estende até `r (medidas_descritivas |> filter(var_name == "person_emp_length"))$max` anos.
+Pela @fig-boxplot-person-emp-length, os adimplentes de crédito geralmente
+permanecem mais tempo nos seus empregos.
 
 ```{r}
 #| out-width: 100%
@@ -588,10 +594,10 @@ credit_risk_clean |>
     theme_minimal(base_size = 11)
 ```
 
-Esta variável também apresenta uma concentração superior de outliers que se
-estende até `r (medidas_descritivas |> filter(var_name == "person_emp_length"))$max` anos.
-Pela @fig-boxplot-person-emp-length, os adimplentes de crédito geralmente
-permanecem mais tempo nos seus empregos.
+O gráfico de barras da @fig-bar-person-emp-length mostra que a variável possui
+uma distribuição assimétrica positiva, com cauda pesada à direita. Chama a
+atenção a manifestação de um fenômeno natural na variável: pessoas desempregadas
+são as que mais tomam empréstismos, e isso pode ser observado na figura.
 
 ```{r}
 #| out-width: 100%
@@ -609,10 +615,6 @@ credit_risk_clean |>
     )
 ```
 
-O gráfico de barras da @fig-bar-person-emp-length mostra que a variável possui
-uma distribuição assimétrica positiva, com cauda pesada à direita. Chama a
-atenção a manifestação de um fenômeno natural na variável: pessoas desempregadas
-são as que mais tomam empréstismos, e isso pode ser observado na figura.
 
 ### Valor do empréstimo
 
@@ -643,6 +645,9 @@ credit_risk_clean |>
     theme_minimal(base_size = 11)
 ```
 
+O histograma aponta que a maior parte dos empréstimos estão concentrados na
+metade esquerda do gráfico. Há um número razoável de empréstimos de até 25 mil.
+Concessão de empréstimos acima desse valor decaem drasticamente.
 
 ```{r}
 #| out-width: 100%
@@ -659,9 +664,6 @@ credit_risk_clean |>
     )
 ```
 
-O histograma aponta que a maior parte dos empréstimos estão concentrados na
-metade esquerda do gráfico. Há um número razoável de empréstimos de até 25 mil.
-Concessão de empréstimos acima desse valor decaem drasticamente.
 
 ### Taxa de juros
 
@@ -823,9 +825,10 @@ credit_risk_clean |>
     )
 ```
 
-Agora vamos analisar as variáveis qualitativas.
-
 ### Tipo de moradia
+
+De acordo com a @fig-hbar-person-home-ownership, os dois grupos que mais
+contratam empréstimos são as pessoas com casas alugadas e financiadas.
 
 ```{r}
 #| out-width: 100%
@@ -876,6 +879,14 @@ ggplot(credit_risk_clean, aes(y = fct_rev(fct_infreq(person_home_ownership)))) +
 ```
 
 
+Se observamos a distribuição conjunta da situação do empréstimo de acordo com o
+tipo de moradia, descrito na @tbl-dblentry-person-home-owner-ship, notamos que o
+percentual de inadimplentes dentro do grupo dos que possuem possuem imóvel
+alugado é mais do que 4x o percentual de inadimplentes do grupo que possui
+moradia própria. Também é constatado diferenças expressivas entre os demais
+grupos de moradia. Este é um bom indicativo de que existe uma relação concreta
+entre o tipo de moradia e a variável resposta situação do empréstimo.
+
 
 ```{r}
 #| out-width: 100%
@@ -914,8 +925,12 @@ tbl_contigency |>
     )
 ```
 
+
+
 ### Finalidade do empréstimo
 
+Em termos de destinação dos recursos, segundo a @fig-hbar-loan-intent, o top 3 é composto por investimentos em
+educação seguido por despesas médicas e empreendimento.
 
 ```{r}
 #| out-width: 100%
@@ -930,7 +945,7 @@ ggplot(credit_risk_clean, aes(y = fct_rev(fct_infreq(loan_intent)))) +
         "EDUCATION"         = "Educacional",
         "MEDICAL"           = "Despesas médicas",
         "VENTURE"           = "Empreendimento",
-        "HOMEIMPROVEMENT"   = "Reforma de imóvel",
+        "HOMEIMPROVEMENT"   = "Reforma imobiliária",
         "DEBTCONSOLIDATION" = "Quitação de dívidas"
     )
   ) +
@@ -945,7 +960,9 @@ ggplot(credit_risk_clean, aes(y = fct_rev(fct_infreq(loan_intent)))) +
   )
 ```
 
-
+Conforme descrito pela @tbl-dblentry-loan-intent, a proporção de inadimplentes é
+maior em empréstimos tomados com a finalidade de quitação de dívidas, reforma
+imobiliária e despesas médicas.
 
 ```{r}
 #| out-width: 100%
@@ -960,7 +977,7 @@ tbl_contigency <- credit_risk_clean |>
             "Educacional"           = "EDUCATION",
             "Despesas médicas"      = "MEDICAL",
             "Empreendimento"        = "VENTURE",
-            "Reforma de imóvel"     = "HOMEIMPROVEMENT",
+            "Reforma imobiliária"   = "HOMEIMPROVEMENT",
             "Quitação de dívidas"   = "DEBTCONSOLIDATION"
         )
     ) |>
@@ -987,6 +1004,11 @@ tbl_contigency |>
 ```
 
 ### Classificação de risco
+
+A distribuição das contratações por grau de risco (@fig-hbar-loan-grade)
+evidencia um comportamento esperado no mercado de crédito: o volume de operações
+concedidas decresce monotonicamente à medida que o risco de inadimplência
+atribuído ao tomador se eleva.
 
 ```{r}
 #| out-width: 100%
@@ -1016,6 +1038,10 @@ ggplot(credit_risk_clean, aes(y = fct_rev(fct_infreq(loan_grade)))) +
   )
 ```
 
+Como esperado para uma régua de classificação de crédito, observa-se na
+@tbl-dblentry-loan_grade uma relação direta entre o grau de risco e a taxa de
+inadimplência. Esse padrão confirma a elevada capacidade discriminatória da
+variável para a modelagem do risco de crédito.
 
 
 ```{r}
@@ -1067,6 +1093,10 @@ concedidos a pessoas que já possuíam registro de inadimplência em seus histó
 `r (count_cb_person_default_on_file_no$n)` (`r round(count_cb_person_default_on_file_no$perc, 2)`%) dos empréstimos foram concedidos
 a pessoas que sempre pagam em dia.
 
+A @tbl-dblentry-cb-person-default-on-file demonstra que a proporção de
+inadimplentes no grupo dos que já foram inadimplentes no passado é basicamente o
+dobro do grupo dos que nunca ficaram devendo.
+
 ```{r}
 #| out-width: 100%
 #| label: tbl-dblentry-cb-person-default-on-file
@@ -1113,8 +1143,9 @@ count_loan_status_paid <- count_loan_status |>
 ```
 
 
-Nossa variável de interesse indica que `r (count_loan_status_default$n)` (`r round(count_loan_status_default$perc, 2)`%) dos empréstimos concedidos
-tiveram um desfecho de inadimplência na base de dados.
+Na amostra saneada, nossa variável resposta revela que `r (count_loan_status_default$n)` (`r round(count_loan_status_default$perc, 2)`%) dos empréstimos concedidos
+tiveram um desfecho de inadimplência na base de dados, ao passo que apenas `r (count_loan_status_paid$n)` (`r round(count_loan_status_paid$perc, 2)`%)
+do total de `r nrow(credit_risk_clean)` empréstimos foram devidamente quitados.
 
 ## Análise conjunta
 
