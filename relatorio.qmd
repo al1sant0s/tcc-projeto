@@ -1,8 +1,8 @@
 ---
 # vim: shiftwidth=4 softtabstop=4 textwidth=80
 author: "Alisson Lucas da Costa Santos"
-title: "Título Principal"
-subtitle: "Nome da Matéria"
+title: "Título provisório"
+subtitle: "TCC 01"
 # bibliography: references.bib
 # csl: abnt-num.csl
 lang: "pt-br"
@@ -20,10 +20,11 @@ format:
     toc-depth: 3
     toc-title: "Tabela de conteúdos"
     code-fold: true
-    code-tools: true
+    code-tools: false
     number-sections: true
     embed-resources: true
-docx: default
+    docx:
+        reference-doc: reference.docx
 editor: source
 ---
 
@@ -37,20 +38,41 @@ p {
 ```{r}
 #| echo: false
 library("pacman")
-p_load("tidyverse", "rio", "gt", "labelled", "moments", "janitor")
+p_load("tidyverse", "rio", "gt", "labelled", "moments", "janitor", "corrr", "ggcorrplot", "patchwork", "scales")
 options(scipen = 999)
 ```
 
 \newpage
 
-# Título
-## Subtítulo
+# Introdução
 
-_Conteúdo do parágrafo._
+A gestão prudente do risco de crédito constitui um dos pilares estratégicos de
+instituições financeiras, cuja rentabilidade e estabilidade dependem da
+capacidade de estimar com precisão a probabilidade de inadimplência
+(default) de solicitantes de empréstimos.
 
-# Base de dados
+Decisões inadequadas na concessão acarretam perdas financeiras severas e exigem
+maior provisão para créditos de liquidação duvidosa, ao passo que critérios
+excessivamente restritivos penalizam o volume de negócios e a competitividade da
+instituição frente às demais.
+
+Neste estudo, aborda-se o problema clássico de previsão da inadimplência a
+partir de um conjunto de dados composto por registros cadastrais, histórico
+financeiro e características das operações solicitadas por mais de 32 mil
+tomadores de crédito. A variável de interesse é dicotômica e representa o
+desfecho financeiro do empréstimo ($Y = 1$ para ocorrência de inadimplência e $Y = 0$ para quitação
+regular), configurando um cenário de classificação supervisionada em
+carteiras com desbalanceamento moderado entre as classes.
+
+O objetivo central consiste em construir, avaliar e comparar modelos preditivos
+probabilísticos de regressão que identifiquem os fatores determinantes do risco de crédito e
+ofereçam poder discriminatório confiável para apoiar a esteira de concessão.
+
+
+## O conjunto de dados
 
 ```{r}
+#| label: database-import
 
 # Leitura da base
 credit_risk <- import("credit_risk_dataset.csv", headers = TRUE) |>
@@ -62,20 +84,6 @@ credit_risk <- import("credit_risk_dataset.csv", headers = TRUE) |>
         cb_person_default_on_file = as.factor(cb_person_default_on_file)
     )
 
-# Separacao dos nomes das variaveis por tipo
-resposta <- "loan_status"
-
-categoricas <- c(
-  "person_home_ownership",
-  "loan_intent",
-  "loan_grade",
-  "cb_person_default_on_file"
-)
-
-numericas <- setdiff(
-  names(select(credit_risk, where(is.numeric))),
-  resposta
-)
 
 # Traduzir variáveis.
 nomes_legiveis <- c(
@@ -94,10 +102,60 @@ nomes_legiveis <- c(
 )
 
 var_label(credit_risk) <- nomes_legiveis
+
+# Traduzir labels
+credit_risk <- credit_risk |>
+  mutate(
+    # Fator com ordem explicita e rótulos legíveis
+    person_home_ownership = factor(
+      recode(person_home_ownership,
+        "RENT"     = "Alugada",
+        "MORTGAGE" = "Financiada",
+        "OWN"      = "Própria",
+        "OTHER"    = "Outro"
+      ),
+      levels = c("Alugada", "Financiada", "Própria", "Outro")
+    ),
+    
+    loan_intent = factor(
+      recode(loan_intent,
+        "EDUCATION"         = "Educação",
+        "MEDICAL"           = "Saúde",
+        "VENTURE"           = "Empreendimento",
+        "PERSONAL"          = "Uso pessoal",
+        "DEBTCONSOLIDATION" = "Consolidação de dívidas",
+        "HOMEIMPROVEMENT"   = "Reforma imobiliária"
+      )
+    ),
+    
+    # Ordem natural mantida de A até G
+    loan_grade = factor(loan_grade),
+    
+    # 'Não' como nível de referência para a regressão
+    cb_person_default_on_file = factor(
+      recode(cb_person_default_on_file,
+        "N" = "Não",
+        "Y" = "Sim"
+      ),
+      levels = c("Não", "Sim")
+    )
+  )
+
+# Separacao dos nomes das variaveis por tipo
+resposta <- "loan_status"
+
+categoricas <- c(
+  "person_home_ownership",
+  "loan_intent",
+  "loan_grade",
+  "cb_person_default_on_file"
+)
+
+numericas <- setdiff(
+  names(select(credit_risk, where(is.numeric))),
+  resposta
+)
 ```
-
-
-# O conjunto de dados
 
 Para abordar este problema, utilizaremos o conjunto de dados intitulado **Credit Risk Dataset**,
 disponibilizado na plataforma [Kaggle](https://www.kaggle.com/datasets/laotse/credit-risk-dataset?utm_source=gemini).
@@ -109,7 +167,7 @@ Cada observação representa uma contratação de empréstimo. No total o conjun
 `r ncol(credit_risk)` variáveis que se dividem em três grupos: perfil do tomador, características do empréstimo e
 informações de risco.
 
-## Perfil do tomador
+### Perfil do tomador
 
 No perfil do tomador, estão reunidas as seguintes variáveis:
 
@@ -122,7 +180,7 @@ No perfil do tomador, estão reunidas as seguintes variáveis:
     - outros.
 - **Tempo no emprego atual** (`person_emp_length`): tempo de permanência no emprego atual (em anos).
 
-## Características do empréstimo
+### Características do empréstimo
 
 Em relação às características da operação de crédito, constam as seguintes variáveis:
 
@@ -138,7 +196,7 @@ Em relação às características da operação de crédito, constam as seguinte
 - **Taxa de juros** (`loan_int_rate`): taxa de juros anual aplicada ao empréstimo.
 - **Comprometimento da renda** (`loan_percent_income`): proporção entre o valor do empréstimo e a renda anual do tomador de crédito.
 
-## Informações de risco
+### Informações de risco
 
 Por fim, as seguintes variáveis associadas ao histórico de crédito estão disponíveis:
 
@@ -199,7 +257,7 @@ medidas_descritivas |>
         source_note = md("**Fonte**: base de dados.")
     )
 
-colnames(credit_risk)
+#colnames(credit_risk)
 ```
 
 Inspecionando brevemente as medidas, não há dados negativos, porém detecta-se problemas lógicos em duas variáveis: idade do tomador e tempo no emprego atual.
@@ -325,37 +383,6 @@ da variável do comprometimento da renda. A maior diferença observada foi de
 `r max_diff_ratio_loan_percent_income`, possivelmente causado por erros
 de arredondamento. Por conveniência, optou-se por continuar utilizando a
 variável de comprometimento de renda original.
-
-```{r}
-#| out-width: 100%
-#| label: fig-missing-values
-#| fig-cap: Composição de valores faltantes por variável em relação à base de dados
-
-missing_values <- credit_risk |>
-  summarise(across(everything(), \(x) sum(is.na(x)))) |>
-  pivot_longer(cols = everything(), names_to = "variavel", values_to = "na") |>
-  filter(na > 0) |>
-  mutate(
-    perc_na  = na * 100 / nrow(credit_risk),
-    variavel = coalesce(nomes_legiveis[variavel], variavel) # Traduz os nomes
-  )
-
-ggplot(missing_values, aes(x = reorder(variavel, -na), y = na)) +
-    geom_col(fill = "steelblue", alpha = 0.85, show.legend = FALSE) +
-    geom_text(aes(label = na, vjust = -0.5)) +
-    geom_text(
-        aes(label = paste0("(", round(perc_na, 2), "%)")),
-        vjust = 1.5,
-        color = "white"
-    ) +
-    ylim(0, max(missing_values$na) * 1.1) + # Garante espaço para o rótulo
-    labs(x = "Variável", y = "Observações faltantes") +
-    theme_minimal()
-```
-
-
-A proporção de valores faltantes que estas duas variáveis possuem é alta e podem impactar a base de dados de forma preocupante se não
-forem tratadas adequadamente. Essa questão será discutida mais adiante.
 
 Após a constação das inconsistências e a remoção das
 `r nrow(credit_risk) - nrow(credit_risk_clean)` observações apuradas,
@@ -859,14 +886,6 @@ contratam empréstimos são as pessoas com casas alugadas e financiadas.
 
 ggplot(credit_risk_clean, aes(y = fct_rev(fct_infreq(person_home_ownership)))) +
   geom_bar(fill = "steelblue", width = 0.7) +
-  scale_y_discrete(
-    labels = c(
-        "RENT"         = "Alugada",
-        "MORTGAGE"     = "Financiada",
-        "OWN"          = "Própria",
-        "OTHER"        = "Outro"
-    )
-  ) +
   theme_minimal(base_size = 11) +
   theme(
     panel.grid.major.y = element_blank(),
@@ -894,15 +913,6 @@ entre o tipo de moradia e a variável resposta situação do empréstimo.
 #| tbl-cap: Distribuição conjunta das proporções da situação de empréstimo conforme o tipo de moradia do tomador
 
 tbl_contigency <- credit_risk_clean |>
-    mutate(
-        person_home_ownership = fct_recode(
-            person_home_ownership,
-            "Alugada"       = "RENT",
-            "Própria"       = "OWN",
-            "Financiada"    = "MORTGAGE",
-            "Outro"         = "OTHER"
-        )
-    ) |>
     tabyl(person_home_ownership, loan_status) |> 
     adorn_totals("col", name = "Total") |>
     mutate(across(-1, \(x) round(x * 100 / Total, 2)))
@@ -939,16 +949,6 @@ educação seguido por despesas médicas e empreendimento.
 
 ggplot(credit_risk_clean, aes(y = fct_rev(fct_infreq(loan_intent)))) +
   geom_bar(fill = "steelblue", width = 0.7) +
-  scale_y_discrete(
-    labels = c(
-        "PERSONAL"          = "Uso pessoal",
-        "EDUCATION"         = "Educacional",
-        "MEDICAL"           = "Despesas médicas",
-        "VENTURE"           = "Empreendimento",
-        "HOMEIMPROVEMENT"   = "Reforma imobiliária",
-        "DEBTCONSOLIDATION" = "Quitação de dívidas"
-    )
-  ) +
   theme_minimal(base_size = 11) +
   theme(
     panel.grid.major.y = element_blank(),
@@ -970,17 +970,6 @@ imobiliária e despesas médicas.
 #| tbl-cap: Distribuição conjunta das proporções da situação de empréstimo conforme a finalidade
 
 tbl_contigency <- credit_risk_clean |>
-    mutate(
-        loan_intent = fct_recode(
-            loan_intent,
-            "Uso pessoal"           = "PERSONAL",
-            "Educacional"           = "EDUCATION",
-            "Despesas médicas"      = "MEDICAL",
-            "Empreendimento"        = "VENTURE",
-            "Reforma imobiliária"   = "HOMEIMPROVEMENT",
-            "Quitação de dívidas"   = "DEBTCONSOLIDATION"
-        )
-    ) |>
     tabyl(loan_intent, loan_status) |> 
     adorn_totals("col", name = "Total") |>
     mutate(across(-1, \(x) round(x * 100 / Total, 2)))
@@ -1017,16 +1006,6 @@ atribuído ao tomador se eleva.
 
 ggplot(credit_risk_clean, aes(y = fct_rev(fct_infreq(loan_grade)))) +
   geom_bar(fill = "steelblue", width = 0.7) +
-  scale_y_discrete(
-    labels = c(
-        "PERSONAL"          = "Uso pessoal",
-        "EDUCATION"         = "Educacional",
-        "MEDICAL"           = "Despesas médicas",
-        "VENTURE"           = "Empreendimento",
-        "HOMEIMPROVEMENT"   = "Reforma de imóvel",
-        "DEBTCONSOLIDATION" = "Quitação de dívidas"
-    )
-  ) +
   theme_minimal(base_size = 11) +
   theme(
     panel.grid.major.y = element_blank(),
@@ -1082,10 +1061,10 @@ count_cb_person_default_on_file <- credit_risk_clean |>
     mutate(perc = n * 100 / sum(n))
 
 count_cb_person_default_on_file_yes <- count_cb_person_default_on_file |>
-    filter(cb_person_default_on_file == "Y")
+    filter(cb_person_default_on_file == "Sim")
 
 count_cb_person_default_on_file_no <- count_cb_person_default_on_file |>
-    filter(cb_person_default_on_file == "N")
+    filter(cb_person_default_on_file == "Não")
 ```
 
 Cerca de `r (count_cb_person_default_on_file_yes$n)` (`r round(count_cb_person_default_on_file_yes$perc, 2)`%) dos empréstimos
@@ -1103,7 +1082,7 @@ dobro do grupo dos que nunca ficaram devendo.
 #| tbl-cap: Distribuição conjunta das proporções da situação de empréstimo conforme o registro de inadimplência anterior
 
 tbl_contigency <- credit_risk_clean |>
-    mutate(cb_person_default_on_file = fct_rev(fct_recode(cb_person_default_on_file, "Sim" = "Y", "Não" = "N"))) |>
+    mutate(cb_person_default_on_file = fct_rev(cb_person_default_on_file)) |>
     tabyl(cb_person_default_on_file, loan_status) |> 
     adorn_totals("col", name = "Total") |>
     mutate(across(-1, \(x) round(x * 100 / Total, 2)))
@@ -1149,4 +1128,170 @@ do total de `r nrow(credit_risk_clean)` empréstimos foram devidamente quitados.
 
 ## Análise conjunta
 
+Agora iremos investigar a existência de relações entre as potenciais variáveis
+preditoras. Mais especificamente, iremos concentrar nossa atenção para as
+correlações entre as variáveis numéricas e as distribuições conjuntas entre
+pares de variáveis categóricas por meio da inspeção visual de gráficos
+de barras empilhados.
 
+### Variáveis quantitativas
+
+A matriz de correlação linear exibida na @fig-corr-matrix revela predomínio de
+associações fracas a nulas entre a maioria das variáveis explicativas numéricas,
+indicando baixo risco generalizado de redundância de informação. Destacam-se,
+contudo, dois pares específicos: a forte associação entre idade e tempo de
+histórico de crédito ($r > 0.80$), e a correlação positiva entre o montante do
+empréstimo e o comprometimento da renda ($r > 0.5$). Ambos os casos serão
+monitorados quanto a possíveis impactos de multicolinearidade nas etapas de
+ajuste do modelo preditivo.
+
+```{r}
+#| out-width: 100%
+#| label: fig-corr-matrix
+#| fig-cap: Matriz de correlação
+#| warning: false
+
+## Matriz de correlação.
+Mcorr <- cor(select(credit_risk_clean, all_of(numericas)))
+colnames(Mcorr) <- nomes_legiveis[colnames(Mcorr)]
+rownames(Mcorr) <- nomes_legiveis[rownames(Mcorr)]
+
+ggcorrplot(
+    Mcorr,
+    method = "square",
+    type = "lower",          # Mostra apenas o triângulo inferior
+    lab = TRUE,              # Exibe os coeficientes numéricos
+    lab_size = 3.2,          # Tamanho legível dos números
+    digits = 2,              # 2 casas decimais
+    outline.col = "white",
+    show.legend = TRUE,
+    legend.title = "Correlação (r)",
+    colors = c("#6D9EC1", "white", "#E46726") # Azul (negativa), Branco (nula), Laranja (positiva)
+    ) +
+    theme_minimal(base_size = 11) +
+    theme(
+        axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1),
+        panel.grid = element_blank() # Remove linhas de fundo redundantes
+    ) +
+    labs(x = NULL, y = NULL)
+```
+
+
+### Variáveis categóricas
+
+A @fig-associacao-categoricas apresenta as distribuições entre os pares das
+variáveis categóricas: tipo de moradia, finalidade do empréstimo, nível de risco
+e registro de inadimplência anterior.
+Nota-se que praticamente todos os pares de preditores categóricos apresentam
+distribuições homogêneas e independentes entre si. A principal exceção reside no
+cruzamento entre nível de risco e registro de inadimplência anterior, no qual as
+faixas de menor risco (A e B) exibem ausência quase total de registros negativos
+em comparação às categorias mais arriscadas.
+
+
+```{r}
+#| label: fig-associacao-categoricas
+#| fig-cap: Distribuição proporcional entre pares de variáveis categóricas explicativas
+#| fig-width: 10
+#| fig-height: 11
+#| out-width: 100%
+
+
+# 1. Função geradora aproveitando o vetor 'nomes_legiveis'
+criar_grafico_100 <- function(dados, x_var, fill_var, paleta = "Blues") {
+  ggplot(dados, aes(x = .data[[x_var]], fill = .data[[fill_var]])) +
+    geom_bar(position = "fill", width = 0.7, color = "white", linewidth = 0.2) +
+    scale_y_continuous(labels = label_percent(), expand = c(0, 0, 0.05, 0)) +
+    scale_fill_brewer(palette = paleta) +
+    labs(
+      x = nomes_legiveis[x_var],
+      y = "Proporção",
+      fill = nomes_legiveis[fill_var]
+    ) +
+    theme_minimal(base_size = 10) +
+    theme(
+      legend.position = "right",
+      legend.title = element_text(size = 9),
+      legend.text = element_text(size = 8),
+      axis.title = element_text(size = 9),
+      axis.text.x = element_text(angle = 35, hjust = 1, size = 8),
+      panel.grid.minor = element_blank(),
+      panel.grid.major.x = element_blank()
+    )
+}
+
+# 2. Geração dos 6 pares únicos C(4, 2) = 6
+p1 <- criar_grafico_100(credit_risk_clean, "person_home_ownership", "loan_intent", "Set2")
+p2 <- criar_grafico_100(credit_risk_clean, "person_home_ownership", "loan_grade", "YlOrRd")
+p3 <- criar_grafico_100(credit_risk_clean, "person_home_ownership", "cb_person_default_on_file", "Blues")
+p4 <- criar_grafico_100(credit_risk_clean, "loan_intent", "loan_grade", "YlOrRd")
+p5 <- criar_grafico_100(credit_risk_clean, "loan_intent", "cb_person_default_on_file", "Blues")
+p6 <- criar_grafico_100(credit_risk_clean, "loan_grade", "cb_person_default_on_file", "Blues")
+
+# 3. Composição do painel 3x2
+painel_pares_cat <- (p1 | p2) /
+                    (p3 | p4) /
+                    (p5 | p6)
+
+
+painel_pares_cat
+```
+
+
+## Dados faltantes
+
+Com o estudo das relações entre as variáveis e a remoção de observações
+inválidas finalizadas, focaremos agora em um detalhe crucial no aspecto da
+qualidade e consistência dos dados da amostra, a existência de mensurações
+faltantes em uma ou mais variáveis.
+
+Após uma inspeção minuciosa da amostra, detectou-se a existência de dados
+faltantes em duas variáveis: taxa de juros e tempo de emprego atual. O número de
+observações faltantes em cada uma destas duas variáveis juntamente com a
+proporção de perda em relação ao tamanho da amostra ($n = `r nrow(credit_risk_clean)`$) é apresentado no gráfico
+de barras a seguir.
+
+```{r}
+#| out-width: 100%
+#| label: fig-missing-values
+#| fig-cap: Composição de valores faltantes por variável em relação à base de dados
+
+missing_values <- credit_risk_clean |>
+  summarise(across(everything(), \(x) sum(is.na(x)))) |>
+  pivot_longer(cols = everything(), names_to = "variavel", values_to = "na") |>
+  filter(na > 0) |>
+  mutate(
+    perc_na  = na * 100 / nrow(credit_risk_clean),
+    variavel = coalesce(nomes_legiveis[variavel], variavel) # Traduz os nomes
+  )
+
+ggplot(missing_values, aes(x = reorder(variavel, -na), y = na)) +
+    geom_col(fill = "steelblue", alpha = 0.85, show.legend = FALSE) +
+    geom_text(aes(label = na, vjust = -0.5)) +
+    geom_text(
+        aes(label = paste0("(", round(perc_na, 2), "%)")),
+        vjust = 1.5,
+        color = "white"
+    ) +
+    ylim(0, max(missing_values$na) * 1.1) + # Garante espaço para o rótulo
+    labs(x = "Variável", y = "Observações faltantes") +
+    theme_minimal()
+```
+
+
+A proporção de valores faltantes que estas duas variáveis possuem é alta e podem
+impactar a base de dados de forma preocupante se não forem tratadas
+adequadamente, portanto o mero ato de descartar estas observações está fora de
+questão. É necessário uma maneira de restabelecer estes dados faltantes na amostra.
+
+
+::: {.callout-warning}
+## Como vamos reinputar esses dados na amostra?
+
+Possíveis técnicas para considerar:
+
+- imputação simples por medida de tendência central com média ou mediana,
+- imputação por agrupamento condicional (mediana por grupos),
+- imputação baseada em modelos/algoritmos (k-nn, random forest ou mice),
+- outros.
+:::
