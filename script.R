@@ -21,6 +21,10 @@ options(scipen=9999)
 # Leitura da base
 credit_risk <- import("credit_risk_dataset.csv", headers = TRUE)
 
+x <- credit_risk |> filter(person_age <= 40) |>
+  na.omit() |>
+  nrow()
+
 # Separacao dos nomes das variaveis por tipo
 resposta <- "loan_status"
 
