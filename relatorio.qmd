@@ -349,7 +349,6 @@ medidas_descritivas_default |>
     tab_source_note(
         source_note = md("**Fonte**: base de dados.")
     )
-
 ```
 
 Inspecionando brevemente as medidas das tabelas, não há dados negativos, porém detecta-se problemas lógicos em duas variáveis: idade do tomador e tempo no emprego atual.
@@ -658,6 +657,55 @@ medidas_descritivas_default |>
 
 ```
 
+Também é apresentada uma tabela resumo com a distribuição destas variáveis
+considerando ambos os grupos.
+
+```{r}
+#| label: tbl-desc-analysis-summary
+#| tbl-cap: Medidas descritivas para tomadores de empréstimo
+
+medidas_descritivas <- credit_risk_clean |>
+    select(all_of(numericas)) |>
+    pivot_longer(cols = everything(), names_to = "variavel", values_to = "valor") |>
+    group_by(variavel) |>
+    summarise(
+        mean = mean(valor, na.rm = TRUE),
+        sd = sd(valor, na.rm = TRUE),
+        min = min(valor, na.rm = TRUE),
+        q1 = quantile(valor, 0.25, na.rm = TRUE),
+        median = median(valor, na.rm = TRUE),
+        q3 = quantile(valor, 0.75, na.rm = TRUE),
+        max = max(valor, na.rm = TRUE)
+    ) |>
+    mutate(var_name = variavel) |>
+    mutate(across(-c(variavel, var_name), \(x) round(x, 2))) |>
+    mutate(variavel = coalesce(nomes_legiveis[variavel], variavel))
+
+medidas_descritivas |>
+    select(-var_name) |>
+    gt(rowname_col = "variavel") |>
+    tab_stubhead("Variável") |>
+    cols_label(
+        mean = "Média",
+        sd = "Desvio padrão",
+        min = "Mínimo",
+        q1 = md("$q_1$"),
+        median = "Mediana",
+        q3 = md("$q_3$"),
+        max = "Máximo"
+    ) |>
+    cols_align(align = "center", columns = everything()) |>
+    tab_options(
+        table.width = "65%",
+        column_labels.font.weight = "bold",
+        column_labels.padding = "10px"
+    ) |>
+    tab_source_note(
+        source_note = md("**Fonte**: base de dados.")
+    )
+
+```
+
 ## Análise individual
 
 Iremos agora nos restringir a uma análise individual de cada variável
@@ -718,9 +766,10 @@ credit_risk_clean |>
 
 ### Renda anual
 
-Segundo a @tbl-desc-analysis-summary, a renda dos tomadores é a variável
-com maior variabilidade, com desvio padrão de cerca de
-`r round((medidas_descritivas_default |> filter(var_name == "person_income"))$sd, 0)`.
+A renda dos tomadores é a variável com maior variabilidade, com desvio padrão de cerca de
+`r round((medidas_descritivas_nondefault |> filter(var_name == "person_income"))$sd, 0)` para 
+adimplentes (@tbl-desc-analysis-summary-nondefault) e `r round((medidas_descritivas_default |> filter(var_name == "person_income"))$sd, 0)` para 
+inadimplentes (@tbl-desc-analysis-summary-default).
 
 A renda anual apresenta acentuada assimetria positiva, caracterizada por uma cauda longa e distante da mediana,
 evidenciada pela expressiva concentração de outliers na porção superior da @fig-boxplot-person-income.
@@ -758,6 +807,32 @@ decorre de acréscimos percentuais na renda e não de aumentos nominais fixos. O
 segundo motivo é permitir a compressão da cauda longa e estabilização da escala,
 procedimento plenamente viabilizado pela ausência de valores nulos ou negativos
 na distribuição empírica da variável.
+
+Ao avaliar o box plot do log da renda (@fig-boxplot-log-person-income),
+observa-se que a renda do grupo de adimplentes é superior à renda do grupo de
+inadimplentes.
+
+```{r}
+#| out-width: 100%
+#| label: fig-boxplot-log-person-income
+#| fig-cap: Distribuição do log da renda anual por situação de empréstimo
+
+credit_risk_clean |>
+    na.omit() |>
+    ggplot(aes(x = loan_status, y = log(person_income), fill = loan_status)) +
+    geom_boxplot(
+        outlier.color = "red",
+        outlier.size = 1,
+        width = 0.5,
+        show.legend = FALSE
+    ) +
+    scale_fill_manual(values = c("Adimplente" = "#9ecae1", "Inadimplente" = "#6baed6")) +
+    labs(
+        x = "Situação do empréstimo",
+        y = "ln(Renda anual)"
+    ) +
+    theme_minimal(base_size = 11)
+```
 
 A inspeção visual dos histogramas da @fig-hist-person-income-versus comprova a eficácia da
 transformação. O segundo histograma agora possui caudas muito mais leves se comparado ao primeiro.
@@ -806,14 +881,12 @@ que descreve uma distribuição muito mais simétrica.
 
 ### Tempo no emprego atual
 
-As medidas descritivas do tempo no emprego dos tomadores de crédito da
-@tbl-desc-analysis-summary reflete que metade das pessoas permance no mesmo
-emprego por até `r (medidas_descritivas_default |> filter(var_name == "person_emp_length"))$median` anos.
-O terceiro quartil aponta que a maioria empréstimos é feita por pessoas que
-estão nos seus empregos há no máximo `r (medidas_descritivas_default |> filter(var_name == "person_emp_length"))$q3` anos.
+As medidas descritivas do tempo no emprego atual dos tomadores de crédito
+apontam que metade dos inadimplentes permanecem no mesmo emprego por até `r (medidas_descritivas_default |> filter(var_name == "person_emp_length"))$median` anos,
+sendo um ano a menos que a mediana dos adimplentes.
 
 Esta variável também apresenta uma concentração superior de outliers que se
-estende até `r (medidas_descritivas_default |> filter(var_name == "person_emp_length"))$max` anos.
+estende até `r (medidas_descritivas_nondefault |> filter(var_name == "person_emp_length"))$max` anos.
 Pela @fig-boxplot-person-emp-length, os adimplentes de crédito geralmente
 permanecem mais tempo nos seus empregos.
 
@@ -834,7 +907,7 @@ credit_risk_clean |>
     scale_fill_manual(values = c("Adimplente" = "#9ecae1", "Inadimplente" = "#6baed6")) +
     labs(
         x = "Situação do empréstimo",
-        y = "Renda anual"
+        y = "Tempo no emprego atual (anos)"
     ) +
     theme_minimal(base_size = 11)
 ```
@@ -863,9 +936,9 @@ credit_risk_clean |>
 
 ### Valor do empréstimo
 
-A média de empréstimos na base é de `r (medidas_descritivas_default |> filter(var_name == "loan_amnt"))$mean`.
+A média de empréstimos na base é de `r (medidas_descritivas |> filter(var_name == "loan_amnt"))$mean`.
 A mediana do segundo grupo da @fig-boxplot-loan-amnt indica que aqueles que não pagam costumam
-tomar empréstimos mais altos e com maior frequência do que aqueles que pagam (o que é sinalizado pela
+tomar empréstimos mais altos com maior frequência do que aqueles que pagam (o que é sinalizado pela
 cercas de Tukey mais amplas do segundo grupo em conjunto com um menor número de
 outliers).
 
@@ -1024,7 +1097,7 @@ credit_risk_clean |>
 O histórico de crédito médio dos tomadores de crédito é de cerca de
 `r (medidas_descritivas_default |> filter(var_name == "cb_person_cred_hist_length"))$mean` anos
 com desvio padrão de `r (medidas_descritivas_default |> filter(var_name == "cb_person_cred_hist_length"))$sd` anos,
-de acordo com as medidas descritivas da @tbl-desc-analysis-summary, 
+de acordo com as medidas descritivas da @tbl-desc-analysis-summary.
 No geral a distribuição da variável é bastante semelhante entre os dois grupos
 (@fig-boxplot-cb-person-cred-hist-length).
 
