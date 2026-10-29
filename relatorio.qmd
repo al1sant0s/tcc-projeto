@@ -39,6 +39,7 @@ p {
 #| echo: false
 library("pacman")
 p_load("tidyverse", "rio", "gt", "labelled", "moments", "janitor", "corrr", "ggcorrplot", "patchwork", "scales")
+p_load("tidymodels", "dotwhisker", "skimr", "car", "forcats")
 options(scipen = 999)
 ```
 
@@ -106,42 +107,30 @@ var_label(credit_risk) <- nomes_legiveis
 # Traduzir labels
 credit_risk <- credit_risk |>
   mutate(
-    # Fator com ordem explicita e rótulos legíveis
+    # Fator com ordem explícita e rótulos legíveis
     person_home_ownership = factor(
-      recode(person_home_ownership,
-        "RENT"     = "Alugada",
-        "MORTGAGE" = "Financiada",
-        "OWN"      = "Própria",
-        "OTHER"    = "Outro"
-      ),
-      levels = c("Alugada", "Financiada", "Própria", "Outro")
+      person_home_ownership,
+      levels = c("RENT", "MORTGAGE", "OWN", "OTHER"),
+      labels = c("Alugada", "Financiada", "Própria", "Outro")
     ),
-    
     loan_intent = factor(
-      recode(loan_intent,
-        "EDUCATION"         = "Educação",
-        "MEDICAL"           = "Saúde",
-        "VENTURE"           = "Empreendimento",
-        "PERSONAL"          = "Uso pessoal",
-        "DEBTCONSOLIDATION" = "Consolidação de dívidas",
-        "HOMEIMPROVEMENT"   = "Reforma imobiliária"
-      )
+      loan_intent,
+      levels = c("EDUCATION", "MEDICAL", "VENTURE", "PERSONAL", 
+                 "DEBTCONSOLIDATION", "HOMEIMPROVEMENT"),
+      labels = c("Educação", "Saúde", "Empreendimento", "Uso pessoal", 
+                 "Consolidação de dívidas", "Reforma imobiliária")
     ),
-    
-    # Ordem natural mantida de A até G
+    # Ordem natural mantida
     loan_grade = factor(loan_grade),
-    
     # 'Não' como nível de referência para a regressão
     cb_person_default_on_file = factor(
-      recode(cb_person_default_on_file,
-        "N" = "Não",
-        "Y" = "Sim"
-      ),
-      levels = c("Não", "Sim")
+      cb_person_default_on_file,
+      levels = c("N", "Y"),
+      labels = c("Não", "Sim")
     )
   )
 
-# Separacao dos nomes das variaveis por tipo
+# Separação dos nomes das variáveis por tipo
 resposta <- "loan_status"
 
 categoricas <- c(
@@ -191,7 +180,7 @@ Em relação às características da operação de crédito, constam as seguinte
     - empreendimento;
     - reforma imobiliária;
     - quitação de dívidas.
-- **Classificação de risco** (`loan_grade`): classificação atribuída à operação numa escala ordinal de "A" (menor risco) a "G" (maior risco).
+- **Risco de inadimplência** (`loan_grade`): classificação atribuída à operação numa escala ordinal de "A" (menor risco) a "G" (maior risco).
 - **Valor do empréstimo** (`loan_amnt`): montante financeiro total contraído.
 - **Taxa de juros** (`loan_int_rate`): taxa de juros anual aplicada ao empréstimo.
 - **Comprometimento da renda** (`loan_percent_income`): proporção entre o valor do empréstimo e a renda anual do tomador de crédito.
@@ -475,9 +464,6 @@ credit_risk_clean <- credit_risk__omit |>
 
 new_person_age__omit__lte_40 <- nrow(credit_risk_clean)
 new_person_age_prop__omit__lte_40 <- new_person_age__omit__lte_40 / nrow(credit_risk__omit)
-
-na_person_age <- 1
-na_person_age_prop <- 1
 ```
 
 Geralmente no mundo da concessão de empréstimos, as instituições financeiras operam prioritariamente na faixa de 18 a 80 anos.
@@ -846,9 +832,6 @@ transformação. O segundo histograma agora possui caudas muito mais leves se co
 #|  - "Escala logarítmica (ln)"
 #| layout-ncol: 2
 
-credit_risk_clean <- credit_risk_clean |>
-    mutate(log_person_income = log(person_income))
-
 gghist_person_income <- credit_risk_clean |>
     na.omit() |>
     ggplot(aes(x = person_income)) +
@@ -861,7 +844,7 @@ gghist_person_income <- credit_risk_clean |>
 
 gghist_log_person_income <- credit_risk_clean |>
     na.omit() |>
-    ggplot(aes(x = log_person_income)) +
+    ggplot(aes(x = log(person_income))) +
     geom_histogram(bins = 15, fill = "steelblue", color = "white", alpha = 0.8) +
     theme_minimal(base_size = 11) +
     labs(
@@ -874,8 +857,8 @@ gghist_log_person_income
 ```
 
 A escala logarítmica reduz a curtose dos dados de `r round(kurtosis(credit_risk_clean$person_income), 2)`
-para `r round(kurtosis(credit_risk_clean$log_person_income, 2))`
-e possui um coeficiente de assimetria de `r round(skewness(credit_risk_clean$log_person_income), 2)`, 
+para `r round(kurtosis(log(credit_risk_clean$person_income), 2))`
+e possui um coeficiente de assimetria de `r round(skewness(log(credit_risk_clean$person_income)), 2)`, 
 que descreve uma distribuição muito mais simétrica.
 
 
@@ -1012,6 +995,34 @@ credit_risk_clean |>
     ) +
     theme_minimal(base_size = 11)
 ```
+
+Complementarmente, vale a pena destacar a relação direta entre a taxa de juros e o risco de
+inadimplência do tomador de crédito, que pode ser também visualizada por meio de
+um box plot exibido na @fig-boxplot-loan-int-rate-vs-loan-grade. Como esperado, à medida que o nível de risco aumenta, a taxa de
+juros cresce.
+
+```{r}
+#| out-width: 100%
+#| label: fig-boxplot-loan-int-rate-vs-loan-grade
+#| fig-cap: Distribuição das taxas de juros por risco de inadimplência
+
+credit_risk_clean |>
+    na.omit() |>
+    ggplot(aes(x = loan_grade, y = loan_int_rate)) +
+    geom_boxplot(
+        outlier.color = "red",
+        outlier.size = 1,
+        width = 0.5,
+        show.legend = FALSE,
+        fill = "deepskyblue"
+    ) +
+    labs(
+        x = "Risco de inadimplência",
+        y = "Taxa de juros"
+    ) +
+    theme_minimal(base_size = 11)
+```
+
 
 Já o histograma da taxa de juros demonstra que esta variável poussi uma
 assimetria positiva bem mais atenuada e uma cauda direta mais suave.
@@ -1153,30 +1164,8 @@ contratam empréstimos são as pessoas com casas alugadas e financiadas.
 #| label: fig-hbar-person-home-ownership
 #| fig-cap: Distribuição do tipo de moradia
 
-#dist_freq_person_home_ownership <- credit_risk_clean |>
-#    count(person_home_ownership) |>
-#    mutate(ncum = cumsum(n)) |>
-#    mutate(perc = round(n/sum(n) * 100, digits = 4)) |>
-#    mutate(perccum = round(cumsum(perc), digits = 4))
-#
-#ggplot(dist_freq_person_home_ownership, aes(x = "", y = perc, fill = person_home_ownership)) +
-#    geom_bar(stat = "identity", width = 1, color = "white") +
-#    coord_polar("y", start = 1.5) +
-#    theme_void() +
-#    geom_text(aes(label = round(perc, 2)), position = position_stack(vjust = 0.5), color = "black", fontface = "bold") +
-#    scale_fill_brewer(
-#        palette="Dark2",
-#        labels = c(
-#            "RENT"     = "Alugada",
-#            "OWN"      = "Própria",
-#            "MORTGAGE" = "Financiada",
-#            "OTHER"    = "Outro"
-#        )
-#    ) +
-#    labs(fill = "Tipo de moradia")
-
-ggplot(credit_risk_clean, aes(y = fct_rev(fct_infreq(person_home_ownership)))) +
-  geom_bar(fill = "steelblue", width = 0.7) +
+ggplot(credit_risk_clean, aes(y = fct_rev(fct_infreq(person_home_ownership)), fill = factor(loan_status))) +
+  geom_bar(position = "dodge", width = 0.7) +
   theme_minimal(base_size = 11) +
   theme(
     panel.grid.major.y = element_blank(),
@@ -1184,15 +1173,16 @@ ggplot(credit_risk_clean, aes(y = fct_rev(fct_infreq(person_home_ownership)))) +
   ) +
   labs(
     x = "Quantidade de empréstimos",
-    y = "Tipo de moradia"
+    y = "Tipo de moradia",
+    fill = "Situação dos empréstimos"
   )
 ```
 
 
 Se observamos a distribuição conjunta da situação do empréstimo de acordo com o
 tipo de moradia, descrito na @tbl-dblentry-person-home-owner-ship, notamos que o
-percentual de inadimplentes dentro do grupo dos que possuem possuem imóvel
-alugado é mais do que 4x o percentual de inadimplentes do grupo que possui
+número de inadimplentes dentro do grupo dos que possuem possuem imóvel
+alugado é cerca de 3x maior que o número de inadimplentes do grupo que possui
 moradia própria. Também é constatado diferenças expressivas entre os demais
 grupos de moradia. Este é um bom indicativo de que existe uma relação concreta
 entre o tipo de moradia e a variável resposta situação do empréstimo.
@@ -1205,15 +1195,14 @@ entre o tipo de moradia e a variável resposta situação do empréstimo.
 
 tbl_contigency <- credit_risk_clean |>
     tabyl(person_home_ownership, loan_status) |> 
-    adorn_totals("col", name = "Total") |>
-    mutate(across(-1, \(x) round(x * 100 / Total, 2)))
+    adorn_totals("col", name = "Total")
 
 tbl_contigency |>
     gt(rowname_col = "person_home_ownership") |>
     tab_stubhead("Tipo de moradia") |>
     tab_spanner(
         columns = c("Adimplente", "Inadimplente", "Total"),
-        label = "Situação do empréstimo (%)"
+        label = "Situação do empréstimo"
     ) |>
     cols_align(align = "center", columns = everything()) |>
     tab_options(
@@ -1238,8 +1227,8 @@ educação seguido por despesas médicas e empreendimento.
 #| label: fig-hbar-loan-intent
 #| fig-cap: Distribuição da finalidade do empréstimo
 
-ggplot(credit_risk_clean, aes(y = fct_rev(fct_infreq(loan_intent)))) +
-  geom_bar(fill = "steelblue", width = 0.7) +
+ggplot(credit_risk_clean, aes(y = fct_rev(fct_infreq(loan_intent)), fill = loan_status)) +
+  geom_bar(position = "dodge", width = 0.7) +
   theme_minimal(base_size = 11) +
   theme(
     panel.grid.major.y = element_blank(),
@@ -1247,11 +1236,12 @@ ggplot(credit_risk_clean, aes(y = fct_rev(fct_infreq(loan_intent)))) +
   ) +
   labs(
     x = "Quantidade de empréstimos",
-    y = "Finalidade"
+    y = "Finalidade",
+    fill = "Situação dos empréstimos"
   )
 ```
 
-Conforme descrito pela @tbl-dblentry-loan-intent, a proporção de inadimplentes é
+Conforme descrito pela @tbl-dblentry-loan-intent, o número de inadimplentes é
 maior em empréstimos tomados com a finalidade de quitação de dívidas, reforma
 imobiliária e despesas médicas.
 
@@ -1261,16 +1251,15 @@ imobiliária e despesas médicas.
 #| tbl-cap: Distribuição conjunta das proporções da situação de empréstimo conforme a finalidade
 
 tbl_contigency <- credit_risk_clean |>
-    tabyl(loan_intent, loan_status) |> 
-    adorn_totals("col", name = "Total") |>
-    mutate(across(-1, \(x) round(x * 100 / Total, 2)))
+    tabyl(loan_intent, loan_status) |>
+    adorn_totals("col", name = "Total")
 
 tbl_contigency |>
     gt(rowname_col = "loan_intent") |>
     tab_stubhead("Finalidade") |>
     tab_spanner(
         columns = c("Adimplente", "Inadimplente", "Total"),
-        label = "Situação do empréstimo (%)"
+        label = "Situação do empréstimo"
     ) |>
     cols_align(align = "center", columns = everything()) |>
     tab_options(
@@ -1283,9 +1272,9 @@ tbl_contigency |>
     )
 ```
 
-### Classificação de risco
+### Risco de inadimplência
 
-A distribuição das contratações por grau de risco (@fig-hbar-loan-grade)
+A distribuição das contratações de empréstimos por grau de risco (@fig-hbar-loan-grade)
 evidencia um comportamento esperado no mercado de crédito: o volume de operações
 concedidas decresce monotonicamente à medida que o risco de inadimplência
 atribuído ao tomador se eleva.
@@ -1295,8 +1284,8 @@ atribuído ao tomador se eleva.
 #| label: fig-hbar-loan-grade
 #| fig-cap: Distribuição da classificação de risco
 
-ggplot(credit_risk_clean, aes(y = fct_rev(fct_infreq(loan_grade)))) +
-  geom_bar(fill = "steelblue", width = 0.7) +
+ggplot(credit_risk_clean, aes(y = fct_rev(fct_infreq(loan_grade)), fill = loan_status)) +
+  geom_bar(position = "dodge", width = 0.7) +
   theme_minimal(base_size = 11) +
   theme(
     panel.grid.major.y = element_blank(),
@@ -1304,15 +1293,22 @@ ggplot(credit_risk_clean, aes(y = fct_rev(fct_infreq(loan_grade)))) +
   ) +
   labs(
     x = "Quantidade de empréstimos",
-    y = "Risco"
+    y = "Risco",
+    fill = "Situação dos empréstimos"
   )
 ```
+
+Outro comportamento intrigante apresentado no gráfico é a inversão da classe
+predominante da situação de empréstimo a partir de determinada categoria de
+risco de inadimplência. Podemos observar que as classes A, B e C são compostas
+majoritariamente por tomadores adimplentes. Enquanto que a partir da classe D
+esta situação se inverte e as categorias subsequentes de maior risco passam a
+serem compostas cada vez mais exclusivamente por inadimplentes. 
 
 Como esperado para uma régua de classificação de crédito, observa-se na
 @tbl-dblentry-loan_grade uma relação direta entre o grau de risco e a taxa de
 inadimplência. Esse padrão confirma a elevada capacidade discriminatória da
 variável para a modelagem do risco de crédito.
-
 
 ```{r}
 #| out-width: 100%
@@ -1320,16 +1316,54 @@ variável para a modelagem do risco de crédito.
 #| tbl-cap: Distribuição conjunta das proporções da situação de empréstimo conforme a classificação de risco
 
 tbl_contigency <- credit_risk_clean |>
-    tabyl(loan_grade, loan_status) |> 
-    adorn_totals("col", name = "Total") |>
-    mutate(across(-1, \(x) round(x * 100 / Total, 2)))
+    tabyl(loan_grade, loan_status) |>
+    adorn_totals("col", name = "Total")
 
 tbl_contigency |>
     gt(rowname_col = "loan_grade") |>
     tab_stubhead("Risco") |>
     tab_spanner(
         columns = c("Adimplente", "Inadimplente", "Total"),
-        label = "Situação do empréstimo (%)"
+        label = "Situação do empréstimo"
+    ) |>
+    cols_align(align = "center", columns = everything()) |>
+    tab_options(
+        table.width = "65%",
+        column_labels.font.weight = "bold",
+        column_labels.padding = "10px"
+    ) |>
+    tab_source_note(
+        source_note = md("**Fonte**: base de dados.")
+    )
+```
+
+
+A @tbl-dblentry-loan-grade evidencia algo que pode se tornar um possível problema
+na modelagem com a variável risco de inadimplência como variável preditora:
+há apenas um adimplente na classse de maior risco, a classe G. Portanto, optou-se por
+unir as observações das classes F e G em uma única classe, conforme exibido na
+tabela.
+
+```{r}
+#| out-width: 100%
+#| label: tbl-dblentry-loan-grade-collapsed
+#| tbl-cap: Distribuição conjunta das proporções da situação de empréstimo conforme a classificação de risco
+
+tbl_contigency <- credit_risk_clean |>
+    # Unindo as classes F e G em uma única categoria
+    mutate(loan_grade = case_when(
+        loan_grade %in% c("F", "G") ~ "F-G",
+        TRUE ~ as.character(loan_grade)
+    )) |>
+    tabyl(loan_grade, loan_status) |>
+    adorn_totals("col", name = "Total")
+
+tbl_contigency |>
+    gt(rowname_col = "loan_grade") |>
+    tab_stubhead("Risco") |>
+    tab_spanner(
+        columns = c("Adimplente", "Inadimplente", "Total"),
+        label = "Situação do empréstimo"
     ) |>
     cols_align(align = "center", columns = everything()) |>
     tab_options(
