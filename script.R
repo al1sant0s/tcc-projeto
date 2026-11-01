@@ -41,7 +41,7 @@ nomes_legiveis <- c(
     "loan_status" = "Situação do empréstimo",
     "loan_percent_income" = "Comprometimento da renda",
     "cb_person_default_on_file" = "Registro de inadimplência anterior",
-    "cb_person_cred_hist_length" = "Histórico de crédito (anos)"
+    "cb_person_cred_hist_length" = "Histórico de crédito"
 )
 
 var_label(credit_risk) <- nomes_legiveis

@@ -7,7 +7,7 @@ subtitle: "TCC 01"
 # csl: abnt-num.csl
 lang: "pt-br"
 execute:
-    echo: false
+    echo: true
     cache: false
 toc: false
 number-sections: false
@@ -38,7 +38,7 @@ p {
 ```{r}
 #| echo: false
 library("pacman")
-p_load("tidyverse", "rio", "gt", "labelled", "moments", "janitor", "corrr", "ggcorrplot", "patchwork", "scales")
+p_load("tidyverse", "rio", "gt", "labelled", "moments", "janitor", "corrr", "ggcorrplot", "patchwork", "scales", "hexbin")
 p_load("tidymodels", "dotwhisker", "skimr", "car", "forcats")
 options(scipen = 999)
 ```
@@ -89,17 +89,17 @@ credit_risk <- import("credit_risk_dataset.csv", headers = TRUE) |>
 # Traduzir variáveis.
 nomes_legiveis <- c(
     "person_age" = "Idade",
-    "person_income" = "Renda anual",
+    "person_income" = "Renda pessoal",
     "person_home_ownership" = "Tipo de moradia",
     "person_emp_length" = "Tempo no emprego atual",
     "loan_intent" = "Finalidade do empréstimo",
-    "loan_grade" = "Nível de risco",
+    "loan_grade" = "Risco de inadimplência",
     "loan_amnt" = "Valor do empréstimo",
     "loan_int_rate" = "Taxa de juros",
     "loan_status" = "Situação do empréstimo",
     "loan_percent_income" = "Comprometimento da renda",
     "cb_person_default_on_file" = "Registro de inadimplência anterior",
-    "cb_person_cred_hist_length" = "Histórico de crédito (anos)"
+    "cb_person_cred_hist_length" = "Histórico de crédito"
 )
 
 var_label(credit_risk) <- nomes_legiveis
@@ -133,6 +133,10 @@ credit_risk <- credit_risk |>
 # Separação dos nomes das variáveis por tipo
 resposta <- "loan_status"
 
+preditoras <- credit_risk |>
+    select(-all_of(resposta)) |>
+    colnames()
+
 categoricas <- c(
   "person_home_ownership",
   "loan_intent",
@@ -144,6 +148,8 @@ numericas <- setdiff(
   names(select(credit_risk, where(is.numeric))),
   resposta
 )
+
+
 ```
 
 Para abordar este problema, utilizaremos o conjunto de dados intitulado **Credit Risk Dataset**,
@@ -161,7 +167,7 @@ informações de risco.
 No perfil do tomador, estão reunidas as seguintes variáveis:
 
 - **Idade** (`person_age`): idade em anos.
-- **Renda anual** (`person_income`): renda anual declarada (em unidade monetária).
+- **Renda pessoal** (`person_income`): renda anual declarada (em unidade monetária).
 - **Tipo de moradia** (`person_home_ownership`): situação de moradia atual, classificada em:
     - aluguel;
     - própria;
@@ -183,7 +189,7 @@ Em relação às características da operação de crédito, constam as seguinte
 - **Risco de inadimplência** (`loan_grade`): classificação atribuída à operação numa escala ordinal de "A" (menor risco) a "G" (maior risco).
 - **Valor do empréstimo** (`loan_amnt`): montante financeiro total contraído.
 - **Taxa de juros** (`loan_int_rate`): taxa de juros anual aplicada ao empréstimo.
-- **Comprometimento da renda** (`loan_percent_income`): proporção entre o valor do empréstimo e a renda anual do tomador de crédito.
+- **Comprometimento da renda** (`loan_percent_income`): proporção entre o valor do empréstimo e a renda pessoal do tomador de crédito.
 
 ### Informações de risco
 
@@ -347,7 +353,7 @@ tenha permanecido no mesmo emprego por `r max(credit_risk$person_emp_length, na.
 
 Alguns desses pontos discrepantes podem representar erros cadastrais e de
 mensuração ou, alternativamente, revelar valores atípicos extremos legítimos, a exemplo
-da expressiva renda anual máxima observada de `r max(credit_risk$person_income)`. No entanto,
+da expressiva renda pessoal máxima observada de `r max(credit_risk$person_income)`. No entanto,
 independentemente do motivo, a presença destes outliers pode distorcer a
 interpretação do comportamento real da população e comprometer qualquer inferência realizada sobre os dados.
 Daí surge a necessidade de analisar e tratar individualmente estas variáveis.
@@ -537,7 +543,7 @@ max_diff_ratio_loan_percent_income <- max(abs(credit_risk$loan_amnt / credit_ris
 Ainda no âmbito das inconsistências das idades, verificou-se que não havia
 observações em que a idade era inferior ao tempo no emprego atual e tampouco
 era inferior ao histórico de crédito. Por fim, foi calculada a razão entre o
-valor do empréstimo e a renda anual do tomador e obteve-se a diferença absoluta com os valores correspondentes
+valor do empréstimo e a renda pessoal do tomador e obteve-se a diferença absoluta com os valores correspondentes
 da variável do comprometimento da renda. A maior diferença observada foi de
 `r max_diff_ratio_loan_percent_income`, possivelmente causado por erros
 de arredondamento. Por conveniência, optou-se por continuar utilizando a
@@ -750,14 +756,14 @@ credit_risk_clean |>
     )
 ```
 
-### Renda anual
+### Renda pessoal
 
 A renda dos tomadores é a variável com maior variabilidade, com desvio padrão de cerca de
 `r round((medidas_descritivas_nondefault |> filter(var_name == "person_income"))$sd, 0)` para 
 adimplentes (@tbl-desc-analysis-summary-nondefault) e `r round((medidas_descritivas_default |> filter(var_name == "person_income"))$sd, 0)` para 
 inadimplentes (@tbl-desc-analysis-summary-default).
 
-A renda anual apresenta acentuada assimetria positiva, caracterizada por uma cauda longa e distante da mediana,
+A renda pessoal apresenta acentuada assimetria positiva, caracterizada por uma cauda longa e distante da mediana,
 evidenciada pela expressiva concentração de outliers na porção superior da @fig-boxplot-person-income.
 O coeficiente de curtose de `r round(kurtosis(credit_risk_clean$person_income), 2)` atesta o padrão fortemente leptocúrtico da distribuição,
 confirmando o peso excessivo da cauda em relação a uma distribuição normal.
@@ -765,7 +771,7 @@ confirmando o peso excessivo da cauda em relação a uma distribuição normal.
 ```{r}
 #| out-width: 100%
 #| label: fig-boxplot-person-income
-#| fig-cap: Distribuição da renda anual por situação de empréstimo
+#| fig-cap: Distribuição da renda pessoal por situação de empréstimo
 
 credit_risk_clean |>
     na.omit() |>
@@ -779,7 +785,7 @@ credit_risk_clean |>
     scale_fill_manual(values = c("Adimplente" = "#9ecae1", "Inadimplente" = "#6baed6")) +
     labs(
         x = "Situação do empréstimo",
-        y = "Renda anual"
+        y = "Renda pessoal"
     ) +
     theme_minimal(base_size = 11)
 ```
@@ -801,7 +807,7 @@ inadimplentes.
 ```{r}
 #| out-width: 100%
 #| label: fig-boxplot-log-person-income
-#| fig-cap: Distribuição do log da renda anual por situação de empréstimo
+#| fig-cap: Distribuição do log da renda pessoal por situação de empréstimo
 
 credit_risk_clean |>
     na.omit() |>
@@ -815,7 +821,7 @@ credit_risk_clean |>
     scale_fill_manual(values = c("Adimplente" = "#9ecae1", "Inadimplente" = "#6baed6")) +
     labs(
         x = "Situação do empréstimo",
-        y = "ln(Renda anual)"
+        y = "ln(Renda pessoal)"
     ) +
     theme_minimal(base_size = 11)
 ```
@@ -826,7 +832,7 @@ transformação. O segundo histograma agora possui caudas muito mais leves se co
 ```{r}
 #| out-width: 100%
 #| label: fig-hist-person-income-versus
-#| fig-cap: Distribuição da renda anual em escala original e logarítmica
+#| fig-cap: Distribuição da renda pessoal em escala original e logarítmica
 #| fig-subcap:
 #|  - "Escala bruta"
 #|  - "Escala logarítmica (ln)"
@@ -848,7 +854,7 @@ gghist_log_person_income <- credit_risk_clean |>
     geom_histogram(bins = 15, fill = "steelblue", color = "white", alpha = 0.8) +
     theme_minimal(base_size = 11) +
     labs(
-        x = "ln(renda anual)",
+        x = "ln(Renda pessoal)",
         y = "Frequência"
     )
 
@@ -1047,7 +1053,7 @@ credit_risk_clean |>
 ### Comprometimento da renda
 
 Em relação ao comprometimento da renda, que é a razão entre o valor do
-empréstimo sobre a renda anual do indivíduo, podemos observar pela
+empréstimo sobre a renda pessoal do indivíduo, podemos observar pela
 @fig-boxplot-loan-percent-income que as pessoas que não quitaram seus
 empréstimos comprometem mais a sua renda quando contraem esses empréstimos se
 comparado com os grupos que quitaram a dívida. É um comportamento semelhante a
@@ -1084,7 +1090,7 @@ Embora a tabela de medidas descritivas revele que há empréstimos que podem
 chegar a comprometer até
 `r (medidas_descritivas_default |> filter(var_name == "loan_percent_income"))$max * 100`%
 da renda do tomador. O histograma da distribuição mostra que no geral a
-maior parte dos empréstimos comprometem até metade da renda anual dos tomadores.
+maior parte dos empréstimos comprometem até metade da renda pessoal dos tomadores.
 
 ```{r}
 #| out-width: 100%
@@ -1312,7 +1318,7 @@ variável para a modelagem do risco de crédito.
 
 ```{r}
 #| out-width: 100%
-#| label: tbl-dblentry-loan_grade
+#| label: tbl-dblentry-loan-grade
 #| tbl-cap: Distribuição conjunta das proporções da situação de empréstimo conforme a classificação de risco
 
 tbl_contigency <- credit_risk_clean |>
@@ -1338,23 +1344,25 @@ tbl_contigency |>
 ```
 
 
-A @tbl-dblentry-loan-grade evidencia algo que pode se tornar um possível problema
+A tabela anterior evidencia algo que pode se tornar um possível problema
 na modelagem com a variável risco de inadimplência como variável preditora:
 há apenas um adimplente na classse de maior risco, a classe G. Portanto, optou-se por
 unir as observações das classes F e G em uma única classe, conforme exibido na
-tabela.
+@tbl-dblentry-loan-grade-collapsed.
 
 ```{r}
 #| out-width: 100%
 #| label: tbl-dblentry-loan-grade-collapsed
 #| tbl-cap: Distribuição conjunta das proporções da situação de empréstimo conforme a classificação de risco
 
-tbl_contigency <- credit_risk_clean |>
+credit_risk_clean <- credit_risk_clean |>
     # Unindo as classes F e G em uma única categoria
     mutate(loan_grade = case_when(
         loan_grade %in% c("F", "G") ~ "F-G",
         TRUE ~ as.character(loan_grade)
-    )) |>
+    ))
+
+tbl_contigency <- credit_risk_clean |>
     tabyl(loan_grade, loan_status) |>
     adorn_totals("col", name = "Total")
 
@@ -1466,9 +1474,7 @@ associações fracas a nulas entre a maioria das variáveis explicativas numéri
 indicando baixo risco generalizado de redundância de informação. Destacam-se,
 contudo, dois pares específicos: a forte associação entre idade e tempo de
 histórico de crédito ($r > 0.80$), e a correlação positiva entre o montante do
-empréstimo e o comprometimento da renda ($r > 0.5$). Ambos os casos serão
-monitorados quanto a possíveis impactos de multicolinearidade nas etapas de
-ajuste do modelo preditivo.
+empréstimo e o comprometimento da renda ($r > 0.5$).
 
 ```{r}
 #| out-width: 100%
@@ -1501,18 +1507,51 @@ ggcorrplot(
     labs(x = NULL, y = NULL)
 ```
 
+A associação positiva entre idade e tempo de histórico de crédito é natural já que é esperado
+que quanto maior a idade do indivíduo, maior é o seu tempo de histórico de crédito.
+Sabemos também que o comprometimento da renda representa aproximadamente
+a razão entre o valor do empréstimo e a renda pessoal do tomador.
+Essa última relação fica mais evidente por meio de um gráfico de dispersão.
+
+```{r}
+#| out-width: 100%
+#| label: fig-dispersion-loan-amnt-vs-loan-percent-income
+#| fig-cap: Diagrama de dispersão entre idade e histórico de crédito
+
+ggplot(credit_risk_clean, aes(x = loan_amnt, y = loan_percent_income)) +
+  geom_point(alpha = 0.5) +
+    geom_hex(bins = 60) +
+    scale_fill_viridis_c(trans = "log10") +
+    theme_minimal() +
+    labs(
+        x = "Valor do empréstimo",
+        y = "Comprometimento da renda",
+        color = "Quantidade"
+    )
+```
+
+A @fig-dispersion-loan-amnt-vs-loan-percent-income releva dois detalhes
+importantes sobre a distribuição destas duas variáveis. Primeiro, a existência de faixas
+verticais em valores fixos de empréstimos como 20 mil, 25 mil e 30 mil. Esta informação mostra que as pessoas preferem
+contratar empréstimos em valores redondos, devido principalmente ao fator psicológico da simplificação,
+que tende a estipular metas financeiras em números inteiros para reduzir a complexidade cognitiva no momento da decisão.
+Segundo, a dispersão do comprometimento da renda cresce substancialmente à medida que os valores dos
+empréstimos aumentam. Isto é explicado pelo fator da renda pessoal. Empréstimos de valores baixos
+não costumam comprometer a renda da maioria das pessoas, mas como a renda em si
+possui uma vasta amplitude, à medida que os empréstimos tornam-se mais altos
+fica muito mais evidente a grande disparidade da capacidade de pagamento entre
+as pessoas devido à suas respectivas rendas.
+
+Como o comprometimento da renda é uma proporção derivada do valor do empréstimo dividido pela renda pessoal,
+as duas variáveis compartilham uma dependência matemática intrínseca, propensa a
+um impacto severo de multicolinearidade. Este impacto será monitorado nas etapas
+de ajuste dos modelos de regressão.
 
 ### Variáveis categóricas
 
 A @fig-associacao-categoricas apresenta as distribuições entre os pares das
-variáveis categóricas: tipo de moradia, finalidade do empréstimo, nível de risco
+variáveis categóricas: tipo de moradia, finalidade do empréstimo, risco de inadimplência
 e registro de inadimplência anterior.
-Nota-se que praticamente todos os pares de preditores categóricos apresentam
-distribuições homogêneas e independentes entre si. A principal exceção reside no
-cruzamento entre nível de risco e registro de inadimplência anterior, no qual as
-faixas de menor risco (A e B) exibem ausência quase total de registros negativos
-em comparação às categorias mais arriscadas.
-
 
 ```{r}
 #| label: fig-associacao-categoricas
@@ -1562,8 +1601,188 @@ painel_pares_cat <- (p1 | p2) /
 painel_pares_cat
 ```
 
+Nota-se que praticamente todos os pares de preditores categóricos apresentam
+distribuições homogêneas e independentes entre si. A principal exceção reside no
+cruzamento entre risco de inadimplência e registro de inadimplência anterior, no qual as
+faixas de menor risco (A e B) exibem ausência quase total de registros negativos
+em comparação às categorias mais arriscadas.
 
-## Dados faltantes
+# Modelagem
+
+Nesta seção iremos realizar a modelagem de 3 modelos...
+
+```{r}
+#| label: training-definitions
+
+# Split.
+set.seed(2026)
+split <- initial_split(credit_risk_clean, prop = 0.7, strata = loan_status)
+train_data <- training(split)
+test_data <- testing(split)
+```
+
+
+## Seleção de variáveis
+
+Conforme discutido anteriormente na seção da Análise Exploratória, dispomos de
+uma amostra de empréstimos que foi filtrada para indivíduos dentro da faixa
+etária de 20 a 40 anos. O nível de desbalanceamento da variável de interesse,
+situação do empréstimo, que indica se os empréstimos contraídos foram quitados ou não
+pelos tomadores, é de aproximadamente 22% de inadimplentes para 78% de
+adimplentes. Ao final da análise, constatamos que o tamanho da amostra
+remanescente após o tratamento dos dados foi de `r nrow(credit_risk_clean)`
+observações.
+
+Um tamanho amostral amplo como este viabiliza a inclusão de todas as
+`r dim(credit_risk_clean)[2] - 1` variáveis preditoras num modelo base.
+Adotamos então esse modelo e seguimos com uma abordagem de diagnóstico inicial
+focada na análise de multicolinearidade dos preditores, através da inspeção do
+fator de inflação de variância generalizada padronizado.
+
+```{r}
+#| label: tbl-gvif-detection
+
+# Variable selection with GVIF and CV.
+# Base model for GVIF verification.
+glm_check_vif <- glm(loan_status ~ . - person_income + log(person_income),
+  family = binomial,
+  data = train_data
+) |>
+    vif() |>
+    as.data.frame()
+
+glm_check_vif <- glm_check_vif |>
+    mutate(variables = nomes_legiveis[preditoras])
+
+colnames(glm_check_vif) <- c("GVIF", "DF", "SGVIF", "variables")
+
+# Problems detected here.
+glm_check_vif |>
+    gt(rowname_col = "variables") |>
+    tab_stubhead("Variáveis") |>
+    cols_label(
+        DF = "Graus de liberdade",
+        SGVIF = "GVIF padronizado"
+    ) |>
+    cols_align(align = "center", columns = everything()) |>
+    tab_options(
+        table.width = "65%",
+        column_labels.font.weight = "bold",
+        column_labels.padding = "10px"
+    ) |>
+    tab_source_note(
+        source_note = md("**Fonte**: base de dados.")
+    )
+
+```
+
+Geralmente, fatores de inflação da variância acima de 5 indicam problemas de multicolinearidade.
+Note que a última coluna da @tbl-gvif-detection está na escala
+da raiz quadrada, portanto, valores desta coluna superiores a 2.24 são indicadores de
+multicolinearidade. Dessa maneira, detecta-se 3 variáveis com multicolinearidade
+significante: risco de inadimplência, valor do empréstimo e taxa de juros.
+
+Estas variáveis estão linearmente relacionadas com outras através de dois
+grupos:
+
+- **Grupo 1**: valor do empréstimo, renda pessoal e comprometimento da renda.
+Sabemos da relação entre estas variáveis pela matriz de correlação da
+@fig-corr-matrix e o gráfico de dispersão da @fig-dispersion-loan-amnt-vs-loan-percent-income.
+
+- **Grupo 2**: taxa de juros e risco de inadimplência. Sabemos da relação entre
+  estas duas variáveis por meio do box plot da @fig-boxplot-loan-int-rate-vs-loan-grade.
+
+Vamos cuidar de cada grupo separadamente. Para o primeiro grupo, julgamos
+que a renda pessoal e o comprometimento da renda são muito mais informativas
+para o modelo e optamos pela remoção da variável valor do empréstimo por considerar
+que tanto a renda pessoal quanto o comprometimento da renda são mais
+informativas em relação à probabilidade de ocorrência de inadimplência num
+empréstimo. A renda pessoal fornece uma boa idea das condições de pagamento do
+indivíduo. Já o comprometimento da renda está numa escala proporcional (0 a 1),
+o que permite a comparação entre diferentes indivíduos em relação à capacidade
+de pagamento.
+
+Em relação ao segundo grupo, vamos testar qual modelo prever melhor utilizando
+uma abordagem com validação cruzada em 10 partes. A ideia principal é utilizar
+as métricas da validação cruzada para confrontar a perfomance de um modelo que
+inclui a taxa de juros sem o risco de inadimplência contra um modelo que inclui
+o risco de inadimplência sem a taxa de juros. O modelo que se sair melhor
+indicará qual das duas variáveis permanecerá no conjunto de preditores para
+ajuste dos modelos posteriores.
+
+```{r}
+#| label: variable-selection
+
+# Remove loan_amnt and adjust two models, one without loan_int_rate and one without loan_grade
+# and check which of the two has the best performance.
+
+# Model, recip, workflow.
+logit_mod <- logistic_reg() |>
+  set_engine("glm")
+
+rec_exclude_int_rate <- recipe(loan_status ~ ., data = train_data) |>
+  step_log(person_income) |>
+  step_rm(loan_amnt, loan_int_rate) |>
+  step_dummy(all_nominal_predictors()) |>
+  step_zv(all_predictors())
+
+wf_exclude_int_rate <-
+  workflow() |>
+  add_model(logit_mod) |>
+  add_recipe(rec_exclude_int_rate)
+
+# Repeated 10-fold CV.
+set.seed(2026)
+folds <- vfold_cv(train_data, v = 10, repeats = 5, strata = loan_status)
+
+# Metrics used throughout.
+risk_metrics <- metric_set(roc_auc, brier_class, mn_log_loss)
+
+exclude_int_rate_rs <-
+  wf_exclude_int_rate |>
+  fit_resamples(
+    folds,
+    metrics = risk_metrics,
+    control = control_resamples(event_level = "second")
+  )
+
+# Logit model without grade.
+rec_exclude_grade <- recipe(loan_status ~ ., data = train_data) |>
+  step_log(person_income) |>
+  step_rm(loan_amnt, loan_grade) |>
+  step_dummy(all_nominal_predictors()) |>
+  step_zv(all_predictors())
+
+wf_exclude_grade <-
+  workflow() |>
+  add_model(logit_mod) |>
+  add_recipe(rec_exclude_grade)
+
+#exclude_grade_rs <-
+#  wf_exclude_grade |>
+#  fit_resamples(
+#    folds,
+#    metrics = risk_metrics,
+#    control = control_resamples(event_level = "second")
+#  )
+#
+## Collect results.
+## Without int_rate vs without grade.
+#bind_rows(
+#  collect_metrics(exclude_int_rate_rs) |> mutate(model = "Keeps loan_grade"),
+#  collect_metrics(exclude_grade_rs)    |> mutate(model = "Keeps loan_int_rate")
+#) |>
+#  select(model, .metric, mean, std_err)
+```
+
+
+Resultados...
+
+## Modelo logit
+
+## Modelo probit
+
+## Modelo complemento log-log
 
 Com o estudo das relações entre as variáveis e a remoção de observações
 inválidas finalizadas, focaremos agora em um detalhe crucial no aspecto da
