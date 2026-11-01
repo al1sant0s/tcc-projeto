@@ -8,7 +8,7 @@ subtitle: "TCC 01"
 lang: "pt-br"
 execute:
     echo: true
-    cache: false
+    cache: true
 toc: false
 number-sections: false
 toc-depth: 2
@@ -37,6 +37,7 @@ p {
 
 ```{r}
 #| echo: false
+#| cache: false
 library("pacman")
 p_load("tidyverse", "rio", "gt", "labelled", "moments", "janitor", "corrr", "ggcorrplot", "patchwork", "scales", "hexbin")
 p_load("tidymodels", "dotwhisker", "skimr", "car", "forcats")
@@ -288,8 +289,12 @@ medidas_descritivas_nondefault |>
         max = "Máximo"
     ) |>
     cols_align(align = "center", columns = everything()) |>
+    tab_style(
+        style = cell_text(align = "center"),
+        locations = cells_stubhead()
+    ) |>
     tab_options(
-        table.width = "65%",
+        table.width = "100%",
         column_labels.font.weight = "bold",
         column_labels.padding = "10px"
     ) |>
@@ -336,8 +341,12 @@ medidas_descritivas_default |>
         max = "Máximo"
     ) |>
     cols_align(align = "center", columns = everything()) |>
+    tab_style(
+        style = cell_text(align = "center"),
+        locations = cells_stubhead()
+    ) |>
     tab_options(
-        table.width = "65%",
+        table.width = "100%",
         column_labels.font.weight = "bold",
         column_labels.padding = "10px"
     ) |>
@@ -590,8 +599,12 @@ medidas_descritivas_nondefault |>
         max = "Máximo"
     ) |>
     cols_align(align = "center", columns = everything()) |>
+    tab_style(
+        style = cell_text(align = "center"),
+        locations = cells_stubhead()
+    ) |>
     tab_options(
-        table.width = "65%",
+        table.width = "100%",
         column_labels.font.weight = "bold",
         column_labels.padding = "10px"
     ) |>
@@ -638,8 +651,12 @@ medidas_descritivas_default |>
         max = "Máximo"
     ) |>
     cols_align(align = "center", columns = everything()) |>
+    tab_style(
+        style = cell_text(align = "center"),
+        locations = cells_stubhead()
+    ) |>
     tab_options(
-        table.width = "65%",
+        table.width = "100%",
         column_labels.font.weight = "bold",
         column_labels.padding = "10px"
     ) |>
@@ -687,8 +704,12 @@ medidas_descritivas |>
         max = "Máximo"
     ) |>
     cols_align(align = "center", columns = everything()) |>
+    tab_style(
+        style = cell_text(align = "center"),
+        locations = cells_stubhead()
+    ) |>
     tab_options(
-        table.width = "65%",
+        table.width = "100%",
         column_labels.font.weight = "bold",
         column_labels.padding = "10px"
     ) |>
@@ -1195,7 +1216,6 @@ entre o tipo de moradia e a variável resposta situação do empréstimo.
 
 
 ```{r}
-#| out-width: 100%
 #| label: tbl-dblentry-person-home-owner-ship
 #| tbl-cap: Distribuição conjunta das proporções da situação de empréstimo conforme o tipo de moradia do tomador
 
@@ -1211,8 +1231,12 @@ tbl_contigency |>
         label = "Situação do empréstimo"
     ) |>
     cols_align(align = "center", columns = everything()) |>
+    tab_style(
+        style = cell_text(align = "center"),
+        locations = cells_stubhead()
+    ) |>
     tab_options(
-        table.width = "65%",
+        table.width = "100%",
         column_labels.font.weight = "bold",
         column_labels.padding = "10px"
     ) |>
@@ -1252,7 +1276,6 @@ maior em empréstimos tomados com a finalidade de quitação de dívidas, reform
 imobiliária e despesas médicas.
 
 ```{r}
-#| out-width: 100%
 #| label: tbl-dblentry-loan-intent
 #| tbl-cap: Distribuição conjunta das proporções da situação de empréstimo conforme a finalidade
 
@@ -1268,8 +1291,12 @@ tbl_contigency |>
         label = "Situação do empréstimo"
     ) |>
     cols_align(align = "center", columns = everything()) |>
+    tab_style(
+        style = cell_text(align = "center"),
+        locations = cells_stubhead()
+    ) |>
     tab_options(
-        table.width = "65%",
+        table.width = "100%",
         column_labels.font.weight = "bold",
         column_labels.padding = "10px"
     ) |>
@@ -1312,12 +1339,11 @@ esta situação se inverte e as categorias subsequentes de maior risco passam a
 serem compostas cada vez mais exclusivamente por inadimplentes. 
 
 Como esperado para uma régua de classificação de crédito, observa-se na
-@tbl-dblentry-loan_grade uma relação direta entre o grau de risco e a taxa de
+@tbl-dblentry-loan-grade uma relação direta entre o grau de risco e a taxa de
 inadimplência. Esse padrão confirma a elevada capacidade discriminatória da
 variável para a modelagem do risco de crédito.
 
 ```{r}
-#| out-width: 100%
 #| label: tbl-dblentry-loan-grade
 #| tbl-cap: Distribuição conjunta das proporções da situação de empréstimo conforme a classificação de risco
 
@@ -1333,8 +1359,12 @@ tbl_contigency |>
         label = "Situação do empréstimo"
     ) |>
     cols_align(align = "center", columns = everything()) |>
+    tab_style(
+        style = cell_text(align = "center"),
+        locations = cells_stubhead()
+    ) |>
     tab_options(
-        table.width = "65%",
+        table.width = "100%",
         column_labels.font.weight = "bold",
         column_labels.padding = "10px"
     ) |>
@@ -1351,7 +1381,6 @@ unir as observações das classes F e G em uma única classe, conforme exibido n
 @tbl-dblentry-loan-grade-collapsed.
 
 ```{r}
-#| out-width: 100%
 #| label: tbl-dblentry-loan-grade-collapsed
 #| tbl-cap: Distribuição conjunta das proporções da situação de empréstimo conforme a classificação de risco
 
@@ -1374,8 +1403,12 @@ tbl_contigency |>
         label = "Situação do empréstimo"
     ) |>
     cols_align(align = "center", columns = everything()) |>
+    tab_style(
+        style = cell_text(align = "center"),
+        locations = cells_stubhead()
+    ) |>
     tab_options(
-        table.width = "65%",
+        table.width = "100%",
         column_labels.font.weight = "bold",
         column_labels.padding = "10px"
     ) |>
@@ -1400,25 +1433,18 @@ count_cb_person_default_on_file_no <- count_cb_person_default_on_file |>
     filter(cb_person_default_on_file == "Não")
 ```
 
-Cerca de `r (count_cb_person_default_on_file_yes$n)` (`r round(count_cb_person_default_on_file_yes$perc, 2)`%) dos empréstimos
-concedidos a pessoas que já possuíam registro de inadimplência em seus históricos, enquanto que
-`r (count_cb_person_default_on_file_no$n)` (`r round(count_cb_person_default_on_file_no$perc, 2)`%) dos empréstimos foram concedidos
-a pessoas que sempre pagam em dia.
-
 A @tbl-dblentry-cb-person-default-on-file demonstra que a proporção de
 inadimplentes no grupo dos que já foram inadimplentes no passado é basicamente o
 dobro do grupo dos que nunca ficaram devendo.
 
 ```{r}
-#| out-width: 100%
 #| label: tbl-dblentry-cb-person-default-on-file
 #| tbl-cap: Distribuição conjunta das proporções da situação de empréstimo conforme o registro de inadimplência anterior
 
 tbl_contigency <- credit_risk_clean |>
     mutate(cb_person_default_on_file = fct_rev(cb_person_default_on_file)) |>
-    tabyl(cb_person_default_on_file, loan_status) |> 
-    adorn_totals("col", name = "Total") |>
-    mutate(across(-1, \(x) round(x * 100 / Total, 2)))
+    tabyl(cb_person_default_on_file, loan_status) |>
+    adorn_totals("col", name = "Total")
 
 tbl_contigency |>
     gt(rowname_col = "cb_person_default_on_file") |>
@@ -1428,8 +1454,12 @@ tbl_contigency |>
         label = "Situação do empréstimo (%)"
     ) |>
     cols_align(align = "center", columns = everything()) |>
+    tab_style(
+        style = cell_text(align = "center"),
+        locations = cells_stubhead()
+    ) |>
     tab_options(
-        table.width = "65%",
+        table.width = "100%",
         column_labels.font.weight = "bold",
         column_labels.padding = "10px"
     ) |>
@@ -1437,6 +1467,12 @@ tbl_contigency |>
         source_note = md("**Fonte**: base de dados.")
     )
 ```
+
+Cerca de `r (count_cb_person_default_on_file_yes$n)` (`r round(count_cb_person_default_on_file_yes$perc, 2)`%) dos empréstimos
+concedidos a pessoas que já possuíam registro de inadimplência em seus históricos, enquanto que
+`r (count_cb_person_default_on_file_no$n)` (`r round(count_cb_person_default_on_file_no$perc, 2)`%) dos empréstimos foram concedidos
+a pessoas que sempre pagam em dia.
+
 
 ### Situação do empréstimo
 
@@ -1613,12 +1649,24 @@ Nesta seção iremos realizar a modelagem de 3 modelos...
 
 ```{r}
 #| label: training-definitions
+#| cache: false
 
 # Split.
 set.seed(2026)
 split <- initial_split(credit_risk_clean, prop = 0.7, strata = loan_status)
 train_data <- training(split)
 test_data <- testing(split)
+
+# Model, recip, workflow.
+logit_mod <- logistic_reg() |>
+  set_engine("glm")
+
+# Repeated 10-fold CV.
+set.seed(2026)
+folds <- vfold_cv(train_data, v = 10, repeats = 5, strata = loan_status)
+
+# Metrics used throughout.
+risk_metrics <- metric_set(roc_auc, brier_class, mn_log_loss)
 ```
 
 
@@ -1641,6 +1689,7 @@ fator de inflação de variância generalizada padronizado.
 
 ```{r}
 #| label: tbl-gvif-detection
+#| tbl-cap: Fator de inflação de variância generalizada (GVIF)
 
 # Variable selection with GVIF and CV.
 # Base model for GVIF verification.
@@ -1664,14 +1713,24 @@ glm_check_vif |>
         DF = "Graus de liberdade",
         SGVIF = "GVIF padronizado"
     ) |>
-    cols_align(align = "center", columns = everything()) |>
-    tab_options(
-        table.width = "65%",
-        column_labels.font.weight = "bold",
-        column_labels.padding = "10px"
-    ) |>
     tab_source_note(
-        source_note = md("**Fonte**: base de dados.")
+        source_note = md("**Fonte**: Elaboração própria.")
+    ) |>
+    cols_align(align = "right", columns = everything()) |>
+    cols_align(align = "left", columns = variables) |>
+    tab_style(
+        style = cell_text(align = "left"),
+        locations = cells_stubhead()
+    ) |>
+    tab_style(
+        style = cell_text(align = "left"),
+        locations = cells_source_notes()
+    ) |>
+    tab_options(
+        table.width = "100%",
+        column_labels.font.weight = "bold",
+        column_labels.padding = "10px",
+        source_notes.font.size = px(11),
     )
 
 ```
@@ -1711,14 +1770,11 @@ indicará qual das duas variáveis permanecerá no conjunto de preditores para
 ajuste dos modelos posteriores.
 
 ```{r}
-#| label: variable-selection
+#| label: tbl-variable-selection
+#| tbl-cap: Métricas da validação cruzada para modelos sem taxa de juros e sem risco de inadimplência
 
 # Remove loan_amnt and adjust two models, one without loan_int_rate and one without loan_grade
 # and check which of the two has the best performance.
-
-# Model, recip, workflow.
-logit_mod <- logistic_reg() |>
-  set_engine("glm")
 
 rec_exclude_int_rate <- recipe(loan_status ~ ., data = train_data) |>
   step_log(person_income) |>
@@ -1730,13 +1786,6 @@ wf_exclude_int_rate <-
   workflow() |>
   add_model(logit_mod) |>
   add_recipe(rec_exclude_int_rate)
-
-# Repeated 10-fold CV.
-set.seed(2026)
-folds <- vfold_cv(train_data, v = 10, repeats = 5, strata = loan_status)
-
-# Metrics used throughout.
-risk_metrics <- metric_set(roc_auc, brier_class, mn_log_loss)
 
 exclude_int_rate_rs <-
   wf_exclude_int_rate |>
@@ -1758,25 +1807,65 @@ wf_exclude_grade <-
   add_model(logit_mod) |>
   add_recipe(rec_exclude_grade)
 
-#exclude_grade_rs <-
-#  wf_exclude_grade |>
-#  fit_resamples(
-#    folds,
-#    metrics = risk_metrics,
-#    control = control_resamples(event_level = "second")
-#  )
-#
-## Collect results.
-## Without int_rate vs without grade.
-#bind_rows(
-#  collect_metrics(exclude_int_rate_rs) |> mutate(model = "Keeps loan_grade"),
-#  collect_metrics(exclude_grade_rs)    |> mutate(model = "Keeps loan_int_rate")
-#) |>
-#  select(model, .metric, mean, std_err)
+exclude_grade_rs <-
+  wf_exclude_grade |>
+  fit_resamples(
+    folds,
+    metrics = risk_metrics,
+    control = control_resamples(event_level = "second")
+  )
+
+# Collect results.
+# Without int_rate vs without grade.
+bind_rows(
+    collect_metrics(exclude_int_rate_rs) |> mutate(model = "Risco de inadimplência"),
+    collect_metrics(exclude_grade_rs)    |> mutate(model = "Taxa de juros")
+) |>
+    mutate(
+        .metric = recode_values(
+            .metric,
+            "brier_class" ~ "Escore de Brier",
+            "mn_log_loss" ~ "Log-Loss",
+            "roc_auc"    ~ "AUC-ROC",
+            default      = .metric
+        )
+    ) |>
+    select(model, .metric, mean, std_err) |>
+    gt(groupname_col = "model") |>
+    cols_label(
+        .metric = "Métrica",
+        mean = "Média",
+        std_err = "Erro padrão"
+    ) |>
+    tab_source_note(
+        source_note = md("**Fonte**: Elaboração própria.")
+    ) |>
+    cols_align(align = "right", columns = everything()) |>
+    cols_align(align = "left", columns = model) |>
+    cols_align(align = "center", columns = .metric) |>
+    tab_style(
+        style = cell_text(align = "left"),
+        locations = cells_stubhead()
+    ) |>
+    tab_style(
+        style = cell_text(align = "left"),
+        locations = cells_source_notes()
+    ) |>
+    tab_options(
+        table.width = "100%",
+        column_labels.font.weight = "bold",
+        column_labels.padding = "10px",
+        source_notes.font.size = px(11),
+    )
 ```
 
 
-Resultados...
+As 3 métricas da @tbl-variable-selection indicam que o modelo sem a variável
+taxa de juros, mantendo o risco de inadimplência, apresenta um desempenho
+superior. Portanto, a variável taxa de juros será removida do conjunto de
+preditores. Com a remoção da variável, verifica-se novamente o fator de inflação
+de variância generalizada padronizado para confirmar que não há mais problemas
+de multicolinearidade entre os preditores.
 
 ## Modelo logit
 
