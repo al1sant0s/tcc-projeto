@@ -1374,48 +1374,13 @@ tbl_contigency |>
 ```
 
 
-A tabela anterior evidencia algo que pode se tornar um possível problema
-na modelagem com a variável risco de inadimplência como variável preditora:
-há apenas um adimplente na classse de maior risco, a classe G. Portanto, optou-se por
-unir as observações das classes F e G em uma única classe, conforme exibido na
-@tbl-dblentry-loan-grade-collapsed.
+A tabela anterior evidencia uma potencial limitação para o ajuste dos modelos com a
+variável de risco como preditora: a presença de apenas um caso adimplente na classe
+de maior risco (G). Essa baixa frequência celular pode provocar instabilidade na estimação
+dos coeficientes e erros padrão inflacionados (quase-separação). Para mitigar esse problema,
+na etapa de pré-processamento, as categorias com frequência relativa inferior a 2% do total
+da amostra (classes F e G) serão agrupadas em uma categoria comum.
 
-```{r}
-#| label: tbl-dblentry-loan-grade-collapsed
-#| tbl-cap: Distribuição conjunta das proporções da situação de empréstimo conforme a classificação de risco
-
-credit_risk_clean <- credit_risk_clean |>
-    # Unindo as classes F e G em uma única categoria
-    mutate(loan_grade = case_when(
-        loan_grade %in% c("F", "G") ~ "F-G",
-        TRUE ~ as.character(loan_grade)
-    ))
-
-tbl_contigency <- credit_risk_clean |>
-    tabyl(loan_grade, loan_status) |>
-    adorn_totals("col", name = "Total")
-
-tbl_contigency |>
-    gt(rowname_col = "loan_grade") |>
-    tab_stubhead("Risco") |>
-    tab_spanner(
-        columns = c("Adimplente", "Inadimplente", "Total"),
-        label = "Situação do empréstimo"
-    ) |>
-    cols_align(align = "center", columns = everything()) |>
-    tab_style(
-        style = cell_text(align = "center"),
-        locations = cells_stubhead()
-    ) |>
-    tab_options(
-        table.width = "100%",
-        column_labels.font.weight = "bold",
-        column_labels.padding = "10px"
-    ) |>
-    tab_source_note(
-        source_note = md("**Fonte**: base de dados.")
-    )
-```
 
 ### Registro de inadimplência anterior
 
@@ -1645,7 +1610,14 @@ em comparação às categorias mais arriscadas.
 
 # Modelagem
 
-Nesta seção iremos realizar a modelagem de 3 modelos...
+Nesta seção, aborda-se o ajuste e a avaliação de três Modelos Lineares Generalizados (GLM)
+para classificação binária, utilizando as seguintes funções de ligação: logística, probit
+e complemento log-log. O objetivo é selecionar o modelo mais adequado para estimar a
+probabilidade de inadimplência dos tomadores de empréstimo. Para isso, a base de dados
+foi dividida aleatoriamente em conjuntos de treino (70%) e teste (30%), com amostragem
+estratificada pela variável resposta para preservar a proporção de inadimplentes.
+A comparação dos modelos em termos de capacidade discriminatória e calibração foi
+conduzida no conjunto de treino por meio de validação cruzada em 10 partes (10-fold cross-validation).
 
 ```{r}
 #| label: training-definitions
@@ -1656,10 +1628,6 @@ set.seed(2026)
 split <- initial_split(credit_risk_clean, prop = 0.7, strata = loan_status)
 train_data <- training(split)
 test_data <- testing(split)
-
-# Model, recip, workflow.
-logit_mod <- logistic_reg() |>
-  set_engine("glm")
 
 # Repeated 10-fold CV.
 set.seed(2026)
@@ -1711,7 +1679,11 @@ glm_check_vif |>
     tab_stubhead("Variáveis") |>
     cols_label(
         DF = "Graus de liberdade",
-        SGVIF = "GVIF padronizado"
+        SGVIF = html("GVIF<sup>1/(2&times;Df)</sup>")
+    ) |>
+    tab_footnote(
+        footnote = md("**Nota:** a variável de renda pessoal foi transformada para a escala logarítmica."),
+        locations = cells_stub(rows = contains(nomes_legiveis["person_income"], ignore.case = TRUE)) # Locate the line automatically.
     ) |>
     tab_source_note(
         source_note = md("**Fonte**: Elaboração própria.")
@@ -1724,15 +1696,21 @@ glm_check_vif |>
     ) |>
     tab_style(
         style = cell_text(align = "left"),
-        locations = cells_source_notes()
+        locations = list(cells_source_notes(), cells_footnotes())
     ) |>
     tab_options(
         table.width = "100%",
         column_labels.font.weight = "bold",
         column_labels.padding = "10px",
-        source_notes.font.size = px(11),
+        source_notes.font.size = px(12),
+        footnotes.font.size = px(12),
+    ) |>
+    fmt_number(
+        columns = c(GVIF, SGVIF),
+        decimals = 3,
+        dec_mark = ",",
+        sep_mark = "."
     )
-
 ```
 
 Geralmente, fatores de inflação da variância acima de 5 indicam problemas de multicolinearidade.
@@ -1775,6 +1753,10 @@ ajuste dos modelos posteriores.
 
 # Remove loan_amnt and adjust two models, one without loan_int_rate and one without loan_grade
 # and check which of the two has the best performance.
+
+# Model, recip, workflow.
+logit_mod <- logistic_reg() |>
+  set_engine("glm")
 
 rec_exclude_int_rate <- recipe(loan_status ~ ., data = train_data) |>
   step_log(person_income) |>
@@ -1826,8 +1808,8 @@ bind_rows(
             .metric,
             "brier_class" ~ "Escore de Brier",
             "mn_log_loss" ~ "Log-Loss",
-            "roc_auc"    ~ "AUC-ROC",
-            default      = .metric
+            "roc_auc" ~ "AUC-ROC",
+            default = .metric
         )
     ) |>
     select(model, .metric, mean, std_err) |>
@@ -1865,27 +1847,436 @@ taxa de juros, mantendo o risco de inadimplência, apresenta um desempenho
 superior. Portanto, a variável taxa de juros será removida do conjunto de
 preditores. Com a remoção da variável, verifica-se novamente o fator de inflação
 de variância generalizada padronizado para confirmar que não há mais problemas
-de multicolinearidade entre os preditores.
+de multicolinearidade entre os preditores remanescentes.
 
-## Modelo logit
+```{r}
+#| label: tbl-gvif-detection-clean
+#| tbl-cap: Fator de inflação de variância generalizada (GVIF) após remoção de preditores
 
-## Modelo probit
+# Variable selection with GVIF and CV.
+# Base model for GVIF verification.
+glm_check_vif <- glm(
+    loan_status ~ .
+        - person_income + log(person_income) - loan_amnt - loan_int_rate,
+    family = binomial,
+    data = train_data
+) |>
+    vif() |>
+    as.data.frame()
 
-## Modelo complemento log-log
+glm_check_vif <- glm_check_vif |>
+    mutate(
+        variables = nomes_legiveis[
+            preditoras[!preditoras %in% c("loan_amnt", "loan_int_rate")]
+        ]
+    )
 
-Com o estudo das relações entre as variáveis e a remoção de observações
-inválidas finalizadas, focaremos agora em um detalhe crucial no aspecto da
-qualidade e consistência dos dados da amostra, a existência de mensurações
-faltantes em uma ou mais variáveis.
+colnames(glm_check_vif) <- c("GVIF", "DF", "SGVIF", "variables")
+
+glm_check_vif |>
+    gt(rowname_col = "variables") |>
+    tab_stubhead("Variáveis") |>
+    cols_label(
+        DF = "Graus de liberdade",
+        SGVIF = html("GVIF<sup>1/(2&times;Df)</sup>")
+    ) |>
+    tab_source_note(
+        source_note = md("**Fonte**: Elaboração própria.")
+    ) |>
+    cols_align(align = "right", columns = everything()) |>
+    cols_align(align = "left", columns = variables) |>
+    tab_style(
+        style = cell_text(align = "left"),
+        locations = cells_stubhead()
+    ) |>
+    tab_style(
+        style = cell_text(align = "left"),
+        locations = cells_source_notes()
+    ) |>
+    tab_options(
+        table.width = "100%",
+        column_labels.font.weight = "bold",
+        column_labels.padding = "10px",
+        source_notes.font.size = px(11),
+    )
+```
+
+Como podemos observar na tabela acima, todas as variáveis preditoras restantes
+apresentam um fator de inflação padronizado inferior a 2.24, indicando que não
+há mais problemas de multicolinearidade entre os preditores.
+
+## Comparação e seleção de modelos
+
+Com as variáveis preditoras definidas, utilizaremos a validação cruzada para
+comparar o desempenho de três modelos lineares generalizados com diferentes
+funções de ligação: logit, probit e complemento log-log. Elegeremos o melhor
+modelo com base nas métricas de desempenho da validação cruzada: Escore de
+Brier, Log-Loss e AUC-ROC.
+
+```{r}
+#| label: cv-logit-model
+
+# Model, recipe, workflow.
+logit_mod <-
+    logistic_reg() |>
+    set_engine("glm")
+
+logit_rec <-
+    recipe(loan_status ~ ., data = train_data) |>
+    # 1. Handle high-cardinality nominal variables first
+    step_novel(all_nominal_predictors()) |>
+    step_other(all_nominal_predictors(), threshold = 0.02) |>
+    step_dummy(all_nominal_predictors()) |>
+    # 2. Perform variable removals and math transformations
+    step_rm(loan_amnt, loan_int_rate) |>
+    step_log(person_income) |>
+    # 3. Clean up any columns that ended up with zero variance
+    step_zv(all_predictors())
+
+logit_wf <-
+    workflow() |>
+    add_model(logit_mod) |>
+    add_recipe(logit_rec)
+
+# Resample, metrics and predictions.
+logit_fit_rs <-
+    logit_wf |>
+    fit_resamples(
+        folds,
+        metrics = risk_metrics,
+        control = control_resamples(save_pred = TRUE, event_level = "second")
+    )
+
+logit_fit_rs_metrics <-
+    collect_metrics(logit_fit_rs) |>
+    mutate(model = "Regressão Logística")
+
+logit_fit_rs_preds <-
+    collect_predictions(logit_fit_rs) |>
+    mutate(model = "Regressão Logística")
+```
 
 
-::: {.callout-warning}
-## Como vamos reinputar esses dados na amostra?
+```{r}
+#| label: cv-probit-model
 
-Possíveis técnicas para considerar:
+# Model, recipe, workflow.
+probit_mod <-
+    logistic_reg() |>
+    set_engine("glm", family = binomial(link = "probit"))
 
-- imputação simples por medida de tendência central com média ou mediana,
-- imputação por agrupamento condicional (mediana por grupos),
-- imputação baseada em modelos/algoritmos (k-nn, random forest ou mice),
-- outros.
-:::
+probit_rec <- logit_rec
+
+probit_wf <-
+    workflow() |>
+    add_model(probit_mod) |>
+    add_recipe(probit_rec)
+
+# Resample, metrics and predictions.
+probit_fit_rs <-
+    probit_wf |>
+    fit_resamples(
+        folds,
+        metrics = risk_metrics,
+        control = control_resamples(save_pred = TRUE, event_level = "second")
+    )
+
+probit_fit_rs_metrics <-
+    collect_metrics(probit_fit_rs) |>
+    mutate(model = "Regressão Probit")
+
+probit_fit_rs_preds <-
+    collect_predictions(probit_fit_rs) |>
+    mutate(model = "Regressão Probit")
+```
+
+
+```{r}
+#| label: cv-cloglog-model
+
+# Model, recipe, workflow.
+cloglog_mod <-
+    logistic_reg() |>
+    set_engine("glm", family = binomial(link = "cloglog"))
+
+cloglog_rec <- logit_rec
+
+cloglog_wf <-
+    workflow() |>
+    add_model(cloglog_mod) |>
+    add_recipe(cloglog_rec)
+
+# Resample, metrics and predictions.
+cloglog_fit_rs <-
+    cloglog_wf |>
+    fit_resamples(
+        folds,
+        metrics = risk_metrics,
+        control = control_resamples(save_pred = TRUE, event_level = "second")
+    )
+
+cloglog_fit_rs_metrics <-
+    collect_metrics(cloglog_fit_rs) |>
+    mutate(model = "Regressão Complemento Log-Log")
+
+cloglog_fit_rs_preds <-
+    collect_predictions(cloglog_fit_rs) |>
+    mutate(model = "Regressão Complemento Log-Log")
+```
+
+
+A @tbl-cv-metrics apresenta as métricas de desempenho da validação
+cruzada.
+
+```{r}
+#| label: tbl-cv-metrics
+#| tbl-cap: Métricas da validação cruzada para os modelos logístico, probit e complemento log-log
+
+
+bind_rows(
+    logit_fit_rs_metrics |> mutate(model = "Modelo Logístico"),
+    probit_fit_rs_metrics |> mutate(model = "Modelo Probit"),
+    cloglog_fit_rs_metrics |> mutate(model = "Modelo Complemento Log-Log"),
+) |>
+    mutate(
+        .metric = recode_values(
+            .metric,
+            "brier_class" ~ "Escore de Brier",
+            "mn_log_loss" ~ "Log-Loss",
+            "roc_auc" ~ "AUC-ROC",
+            default = .metric
+        )
+    ) |>
+    select(model, .metric, mean, std_err) |>
+    gt(groupname_col = "model") |>
+    cols_label(
+        .metric = "Métrica",
+        mean = "Média",
+        std_err = "Erro padrão"
+    ) |>
+    tab_source_note(
+        source_note = md("**Fonte**: Elaboração própria.")
+    ) |>
+    cols_align(align = "right", columns = everything()) |>
+    tab_style(
+        style = cell_text(align = "left"),
+        locations = cells_stubhead()
+    ) |>
+    tab_style(
+        style = cell_text(align = "left"),
+        locations = cells_source_notes()
+    ) |>
+    tab_options(
+        table.width = "65%",
+        column_labels.font.weight = "bold",
+        column_labels.padding = "10px",
+        source_notes.font.size = px(11),
+    )
+```
+
+O melhor modelo de acordo com cada métrica foi:
+
+- Escore de Brier: modelo complemento log-log,
+- Log-Loss: modelo complemento log-log,
+- AUC-ROC: modelo probit.
+
+Contudo, as discrepâncias empíricas entre os três modelos foram residuais
+(inferiores a 0.01 em todas as métricas), caracterizando uma equivalência prática de desempenho.
+Esse comportamento reflete-se na sobreposição quase perfeita das curvas ROC apresentadas na
+@fig-roc-curve-cv-models, evidenciando capacidades discriminatórias essencialmente indistinguíveis.
+
+```{r}
+#| out-width: 100%
+#| label: fig-roc-curve-cv-models
+#| fig-cap: Curva ROC dos modelos ajustados com validação cruzada
+
+bind_rows(
+    logit_fit_rs_preds |>
+        roc_curve(truth = loan_status, .pred_Inadimplente, event_level = "second") |>
+        mutate(model = "Regressão Logística"),
+    probit_fit_rs_preds |>
+        roc_curve(truth = loan_status, .pred_Inadimplente, event_level = "second") |>
+        mutate(model = "Regressão Probit"),
+    cloglog_fit_rs_preds |>
+        roc_curve(truth = loan_status, .pred_Inadimplente, event_level = "second") |>
+        mutate(model = "Regressão Complemento Log-Log"),
+) |>
+    ggplot(aes(x = 1 - specificity, y = sensitivity, col = model)) +
+    geom_path(lwd = 1.2, alpha = 0.5) +
+    geom_abline(lty = 3) +
+    coord_equal() +
+    scale_color_viridis_d(option = "plasma", end = .6) +
+    labs(
+        color = "Modelo",
+        x = "1 - Especificidade",
+        y = "Sensibilidade"
+    )
+```
+
+As três curvas estão visualmente sobrepostas, indicando que as áreas sob as
+curvas (AUC) dos três modelos são similares. Por esta razão, a escolha do modelo
+final pode ser baseada em outros critérios, como a interpretação dos
+coeficientes ou a facilidade de implementação, ao invés de apenas desempenho preditivo puro.
+
+Portanto, uma vez que todos os modelos utilizam a mesma especificação de preditores e
+apresentam o mesmo número de parâmetros estimados, o desempate não decorre de diferenças
+de parcimônia estrutural, mas sim de critérios de utilidade prática.
+
+Diante desse cenário, optou-se pela regressão logística como modelo final, priorizando a
+interpretabilidade direta dos seus coeficientes por meio de razões de chance (odds ratio)
+e a sua ampla consolidação regulatória e operacional na gestão de risco de crédito.
+
+## Ajuste final
+
+```{r}
+#| label: logit-last-fit
+
+# Final fit on training data, evaluated on test data.
+logit_last_fit <-
+    logit_wf |>
+    last_fit(
+        split,
+        metrics = risk_metrics,
+        control = control_last_fit(event_level = "second")
+    )
+```
+
+Com a regressão logistíca selecionada, realiza-se o ajuste do modelo final
+utilizando a amostra de treinamento completa. Os coeficientes do modelo ajustado
+são exibidos a seguir, na @tbl-logit-last-fit.
+
+```{r}
+#| label: tbl-logit-last-fit
+#| tbl-cap: Coeficientes do modelo logístico final ajustado
+
+logit_fit_terms <- c(
+    nomes_legiveis,
+    "(Intercept)" = "(Intercepto)",
+    "person_home_ownership_Financiada" = "Moradia financiada",
+    "person_home_ownership_Própria" = "Moradia própria",
+    "person_home_ownership_other" = "Outros tipos de moradia",
+    "loan_intent_Saúde" = "Finalidade de saúde",
+    "loan_intent_Empreendimento" = "Finalidade de empreendimento",
+    "loan_intent_Uso.pessoal" = "Finalidade de uso pessoal",
+    "loan_intent_Consolidação.de.dívidas" = "Finalidade de consolidação de dívidas",
+    "loan_intent_Reforma.imobiliária" = "Finalidade de reforma imobiliária",
+    "loan_grade_B" = "Risco de inadimplência B",
+    "loan_grade_C" = "Risco de inadimplência C",
+    "loan_grade_D" = "Risco de inadimplência D",
+    "loan_grade_E" = "Risco de inadimplência E",
+    "loan_grade_other" = "Outros riscos de inadimplência",
+    "cb_person_default_on_file_Sim" = "Inadimplência anterior (Sim)"
+)
+
+logit_last_fit |>
+    extract_fit_parsnip() |>
+    tidy(exponentiate = TRUE, conf.int = TRUE) |>
+    select(term, estimate, conf.low, conf.high, p.value) |>
+    mutate(across(-c(term, p.value), \(x) round(x, 4))) |>
+    mutate(p.value = label_scientific(digits = 4)(p.value)) |>
+    mutate(term = logit_fit_terms[term]) |>
+    gt(rowname_col = "term") |>
+    tab_stubhead("Termos") |>
+    cols_label(
+        estimate = "Estimativa",
+        conf.low = "Limite inferior",
+        conf.high = "Limite superior",
+        p.value = "P-valor"
+    ) |>
+    tab_source_note(
+        source_note = md("**Fonte**: Elaboração própria.")
+    ) |>
+    cols_align(align = "right", columns = everything()) |>
+    cols_align(align = "left", columns = term) |>
+    tab_style(
+        style = cell_text(align = "left"),
+        locations = cells_stubhead()
+    ) |>
+    tab_style(
+        style = cell_text(align = "left"),
+        locations = cells_source_notes()
+    ) |>
+    tab_options(
+        table.width = "100%",
+        column_labels.font.weight = "bold",
+        column_labels.padding = "10px",
+        source_notes.font.size = px(11),
+    )
+```
+
+Em seguida, podemos avaliar o desempenho do modelo final no conjusto de teste,
+por meio da @tbl-logit-last-fit-metrics.
+
+```{r}
+#| label: tbl-logit-last-fit-metrics
+#| tbl-cap: Métricas do modelo logístico final ajustado no conjunto de teste
+collect_metrics(logit_last_fit) |>
+    mutate(
+        .metric = recode_values(
+            .metric,
+            "brier_class" ~ "Escore de Brier",
+            "mn_log_loss" ~ "Log-Loss",
+            "roc_auc" ~ "AUC-ROC",
+            default = .metric
+        )
+    ) |>
+    select(.metric, .estimate) |>
+    gt(rowname_col = ".metric") |>
+    tab_stubhead("Métrica") |>
+    cols_label(.estimate = "Estimativa") |>
+    tab_source_note(
+        source_note = md("**Fonte**: Elaboração própria.")
+    ) |>
+    cols_align(align = "right", columns = everything()) |>
+    cols_align(align = "left", columns = .metric) |>
+    tab_style(
+        style = cell_text(align = "left"),
+        locations = cells_stubhead()
+    ) |>
+    tab_style(
+        style = cell_text(align = "left"),
+        locations = cells_source_notes()
+    ) |>
+    tab_options(
+        table.width = "65%",
+        column_labels.font.weight = "bold",
+        column_labels.padding = "10px",
+        source_notes.font.size = px(12),
+    )
+```
+
+Os resultados demonstram que o desempenho do modelo no conjunto de teste foi
+consistente com o desempenho observado na validação cruzada (@tbl-cv-metrics), reforçando a
+robustez do modelo final selecionado. A área sob a curva ROC (AUC) de 0.87
+indica uma ótima capacidade discriminatória do modelo.
+A @fig-roc-curve-logit-last-fit apresenta
+a curva ROC do modelo final no conjunto de teste.
+
+```{r}
+#| out-width: 100%
+#| label: fig-roc-curve-logit-last-fit
+#| fig-cap: Curva ROC do modelo logístico final no conjunto de teste
+
+collect_predictions(logit_last_fit) |>
+    roc_curve(truth = loan_status, .pred_Inadimplente, event_level = "second") |>
+    ggplot(aes(x = 1 - specificity, y = sensitivity)) +
+    geom_path(lwd = 1.2, color = "#4B0082") +
+    geom_abline(lty = 3) +
+    coord_equal() +
+    scale_color_viridis_d(option = "plasma", end = .6) +
+    labs(
+        x = "1 - Especificidade",
+        y = "Sensibilidade"
+    )
+```
+
+Também ajustamos a matriz de confusão do modelo final no conjunto de teste,
+apresentada na @tbl-confusion-matrix-logit-last-fit.
+
+```{r}
+#| label: tbl-confusion-matrix-logit-last-fit
+#| tbl-cap: Matriz de confusão do modelo logístico final no conjunto de teste
+
+# pass
+```
+
