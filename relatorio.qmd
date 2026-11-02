@@ -7,7 +7,7 @@ subtitle: "TCC 01"
 # csl: abnt-num.csl
 lang: "pt-br"
 execute:
-    echo: true
+    echo: false
     cache: true
 toc: false
 number-sections: false
@@ -159,7 +159,7 @@ disponibilizado na plataforma [Kaggle](https://www.kaggle.com/datasets/laotse/cr
 Este conjunto de dados contém colunas que simulam dados de órgãos de proteção ao crédito,
 reunindo informações cadastrais, histórico financeiro e detalhes sobre empréstimos tomados.
 
-Cada observação representa uma contratação de empréstimo. No total o conjunto é composto por `r nrow(credit_risk)` observações e
+Cada observação representa uma contratação de empréstimo. No total o conjunto é composto por `r format(nrow(credit_risk), big.mark = ".")` observações e
 `r ncol(credit_risk)` variáveis que se dividem em três grupos: perfil do tomador, características do empréstimo e
 informações de risco.
 
@@ -202,12 +202,6 @@ Por fim, as seguintes variáveis associadas ao histórico de crédito estão dis
 
 # Análise exploratória
 
-## Desbalanceamento da variável resposta
-
-Iniciaremos a nossa análise descritiva verificando o desbalanceamento da
-variável resposta. 
-
-
 ## Limpeza preliminar dos dados
 
 Iniciaremos a nossa análise descritiva dos dados de risco de crédito fazendo uma
@@ -217,7 +211,7 @@ rapidamente identificar possíveis inconsistências na base de dados.
 
 A @fig-piechart-loan-status-preview apresenta a distribuição da situação
 do empréstimo. Podemos observar que o desbalanceamento inicial é razoável, cerca
-de 78% para 21% a favor dos adimplentes
+de 78% para 22% a favor dos adimplentes.
 
 ```{r}
 #| out-width: 100%
@@ -232,7 +226,7 @@ credit_risk |>
     coord_polar("y", start = 1.5) +
     theme_void() +
     geom_text(
-        aes(label = paste0(round(perc, 2), '%')),
+        aes(label = paste0(format(round(perc, 2), decimal.mark = ","), '%')),
         position = position_stack(vjust = 0.5),
         color = "white",
         fontface = "bold",
@@ -288,18 +282,31 @@ medidas_descritivas_nondefault |>
         q3 = md("$q_3$"),
         max = "Máximo"
     ) |>
-    cols_align(align = "center", columns = everything()) |>
+    tab_source_note(
+        source_note = md("**Fonte**: base de dados.")
+    ) |>
+    cols_align(align = "right", columns = everything()) |>
+    cols_align(align = "left", columns = variavel) |>
     tab_style(
-        style = cell_text(align = "center"),
+        style = cell_text(align = "left"),
         locations = cells_stubhead()
+    ) |>
+    tab_style(
+        style = cell_text(align = "left"),
+        locations = list(cells_source_notes(), cells_footnotes())
     ) |>
     tab_options(
         table.width = "100%",
         column_labels.font.weight = "bold",
-        column_labels.padding = "10px"
+        column_labels.padding = "10px",
+        source_notes.font.size = px(12),
+        footnotes.font.size = px(12)
     ) |>
-    tab_source_note(
-        source_note = md("**Fonte**: base de dados.")
+    fmt_number(
+        columns = c(mean, sd, min, q1, median, q3, max),
+        decimals = 2,
+        dec_mark = ",",
+        sep_mark = "."
     )
 
 ```
@@ -340,18 +347,31 @@ medidas_descritivas_default |>
         q3 = md("$q_3$"),
         max = "Máximo"
     ) |>
-    cols_align(align = "center", columns = everything()) |>
+    tab_source_note(
+        source_note = md("**Fonte**: base de dados.")
+    ) |>
+    cols_align(align = "right", columns = everything()) |>
+    cols_align(align = "left", columns = variavel) |>
     tab_style(
-        style = cell_text(align = "center"),
+        style = cell_text(align = "left"),
         locations = cells_stubhead()
+    ) |>
+    tab_style(
+        style = cell_text(align = "left"),
+        locations = list(cells_source_notes(), cells_footnotes())
     ) |>
     tab_options(
         table.width = "100%",
         column_labels.font.weight = "bold",
-        column_labels.padding = "10px"
+        column_labels.padding = "10px",
+        source_notes.font.size = px(12),
+        footnotes.font.size = px(12)
     ) |>
-    tab_source_note(
-        source_note = md("**Fonte**: base de dados.")
+    fmt_number(
+        columns = c(mean, sd, min, q1, median, q3, max),
+        decimals = 2,
+        dec_mark = ",",
+        sep_mark = "."
     )
 ```
 
@@ -362,7 +382,7 @@ tenha permanecido no mesmo emprego por `r max(credit_risk$person_emp_length, na.
 
 Alguns desses pontos discrepantes podem representar erros cadastrais e de
 mensuração ou, alternativamente, revelar valores atípicos extremos legítimos, a exemplo
-da expressiva renda pessoal máxima observada de `r max(credit_risk$person_income)`. No entanto,
+da expressiva renda pessoal máxima observada de `r format(max(credit_risk$person_income), big.mark = ".", scientific = FALSE)`. No entanto,
 independentemente do motivo, a presença destes outliers pode distorcer a
 interpretação do comportamento real da população e comprometer qualquer inferência realizada sobre os dados.
 Daí surge a necessidade de analisar e tratar individualmente estas variáveis.
@@ -370,7 +390,7 @@ Daí surge a necessidade de analisar e tratar individualmente estas variáveis.
 Além disso, detectou-se a existência de dados
 faltantes em duas variáveis: taxa de juros e tempo de emprego atual. O número de
 observações faltantes em cada uma destas duas variáveis juntamente com a
-proporção de perda em relação ao tamanho da amostra ($n = `r nrow(credit_risk)`$) é apresentado no gráfico
+proporção de perda em relação ao tamanho da amostra ($n = `r format(nrow(credit_risk), big.mark = ".")`$) é apresentado no gráfico
 de barras a seguir.
 
 ```{r}
@@ -389,9 +409,9 @@ missing_values <- credit_risk |>
 
 ggplot(missing_values, aes(x = reorder(variavel, -na), y = na)) +
     geom_col(fill = "steelblue", alpha = 0.85, show.legend = FALSE) +
-    geom_text(aes(label = na, vjust = -0.5)) +
+    geom_text(aes(label = format(na, big.mark = "."), vjust = -0.5)) +
     geom_text(
-        aes(label = paste0("(", round(perc_na, 2), "%)")),
+        aes(label = paste0("(", format(round(perc_na, 2), decimal.mark = ","), "%)")),
         vjust = 1.5,
         color = "white"
     ) +
@@ -411,10 +431,10 @@ Embora a remoção destas observações
 faltantes possa parecer, do ponto de vista metodológico, uma razoável perda em termos percentuais da informação da amostra (quase 10% pela taxa de juros),
 trata-se na verdade de uma perda amostral marginal que não compromete a representatividade dos dados.
 O tamanho resultante da amostra após a remoção ainda é muito alto, possuindo mais de 25 mil observações remanescentes, sendo mais que o suficiente para uma
-infereência adequada que permita a obtenção de modelos preditivos sem prejudicar a qualidade deles.
+inferência adequada que permita a obtenção de modelos preditivos sem prejudicar a qualidade deles.
 
 Além disso, será visto mais adiante pela @fig-piechart-loan-status que o desbalanceamento da
-varíavel resposta não é afetado de maneira significativa com esta decisão e nem com a próxima,
+variável resposta não é afetado de maneira significativa com esta decisão e nem com a próxima,
 que é relacionada com os pontos discrepantes do conjunto de dados.
 
 A @fig-boxplot-age-and-person-emp-length-preview apresenta uma comparação das distribuições da idade e tempo de emprego por meio de dois box plots lado a lado.
@@ -494,20 +514,20 @@ remoção de quaisquer observações em que a diferença entre a idade e o tempo
 cenário que seria infactível dentro do critério adotado.
 
 Há algumas razões para esta escolha. Em primeiro lugar, a grande maioria dos empréstimos no mundo financeiro
-costuma ser solicitados nas primeiras décadas da vida adulta, principalmente
+costuma ser solicitada nas primeiras décadas da vida adulta, principalmente
 por jovens adultos e profissionais em consolidação de carreira. Portanto, a
 restrição a este intervalo etário possibilita o aprimoramento da modelagem
 estatística voltada a um público mais importante para as instituições financeiras. 
 
 No nosso conjunto de dados, a proporção dos empréstimos concedidos nesta faixa etária representa
-cerca de `r new_person_age__lte_40` das `r nrow(credit_risk)` observações sobre a amostra original (`r round(new_person_age_prop__lte_40 * 100, 2)`%).
+cerca de `r format(new_person_age__lte_40, big.mark = ".")` das `r format(nrow(credit_risk), big.mark = ".")` observações sobre a amostra original (`r format(round(new_person_age_prop__lte_40 * 100, 2), decimal.mark = ",")`%).
 Com a remoção das observações faltantes mencionadas anteriormente, esta faixa etária representa
-`r new_person_age__omit__lte_40` das `r nrow(credit_risk__omit)` observações (`r round(new_person_age_prop__omit__lte_40 * 100, 2)`%).
+`r format(new_person_age__omit__lte_40, big.mark = ".")` das `r format(nrow(credit_risk__omit), big.mark = ".")` observações (`r format(round(new_person_age_prop__omit__lte_40 * 100, 2), decimal.mark = ",")`%).
 Portanto, fica claro que estes indivíduos são responsáveis por representar uma alta densidade
 amostral dentro do intervalo. Não há desvantagens operacionais com esta
 decisão, pois como visto, o tamanho amostral permanece alto e mais do que o
 suficiente para uma modelagem, além de que o desbalanceamento da variável
-resposta é essencialmente equivalente à situação original, conforme mostra a fig-piechart-loan-status,
+resposta é essencialmente equivalente à situação original, conforme mostra a @fig-piechart-loan-status;
 eliminam-se, por consequência, anomalias cadastrais evidentes (como registros com idades superiores a 120 anos).
 
 ```{r}
@@ -523,7 +543,7 @@ credit_risk_clean |>
     coord_polar("y", start = 1.5) +
     theme_void() +
     geom_text(
-        aes(label = paste0(round(perc, 2), '%')),
+        aes(label = paste0(format(round(perc, 2), decimal.mark = ","), '%')),
         position = position_stack(vjust = 0.5),
         color = "white",
         fontface = "bold",
@@ -554,14 +574,14 @@ observações em que a idade era inferior ao tempo no emprego atual e tampouco
 era inferior ao histórico de crédito. Por fim, foi calculada a razão entre o
 valor do empréstimo e a renda pessoal do tomador e obteve-se a diferença absoluta com os valores correspondentes
 da variável do comprometimento da renda. A maior diferença observada foi de
-`r max_diff_ratio_loan_percent_income`, possivelmente causado por erros
+`r format(round(max_diff_ratio_loan_percent_income, 2), decimal.mark = ",")`, possivelmente causada por erros
 de arredondamento. Por conveniência, optou-se por continuar utilizando a
 variável de comprometimento de renda original.
 
-Após a constação das inconsistências e a remoção das
-`r nrow(credit_risk) - nrow(credit_risk_clean)` observações apuradas,
+Após a constatação das inconsistências e a remoção das
+`r format(nrow(credit_risk) - nrow(credit_risk_clean), big.mark = ".")` observações apuradas,
 elaborou-se uma versão atualizada de medidas descritivas para todas as
-variáveis quantitativas, de acordo com a situação do empréstismo.
+variáveis quantitativas, de acordo com a situação do empréstimo.
 
 ```{r}
 #| label: tbl-desc-analysis-summary-nondefault
@@ -598,18 +618,31 @@ medidas_descritivas_nondefault |>
         q3 = md("$q_3$"),
         max = "Máximo"
     ) |>
-    cols_align(align = "center", columns = everything()) |>
+    tab_source_note(
+        source_note = md("**Fonte**: base de dados.")
+    ) |>
+    cols_align(align = "right", columns = everything()) |>
+    cols_align(align = "left", columns = variavel) |>
     tab_style(
-        style = cell_text(align = "center"),
+        style = cell_text(align = "left"),
         locations = cells_stubhead()
+    ) |>
+    tab_style(
+        style = cell_text(align = "left"),
+        locations = list(cells_source_notes(), cells_footnotes())
     ) |>
     tab_options(
         table.width = "100%",
         column_labels.font.weight = "bold",
-        column_labels.padding = "10px"
+        column_labels.padding = "10px",
+        source_notes.font.size = px(12),
+        footnotes.font.size = px(12)
     ) |>
-    tab_source_note(
-        source_note = md("**Fonte**: base de dados.")
+    fmt_number(
+        columns = c(mean, sd, min, q1, median, q3, max),
+        decimals = 2,
+        dec_mark = ",",
+        sep_mark = "."
     )
 
 ```
@@ -650,18 +683,31 @@ medidas_descritivas_default |>
         q3 = md("$q_3$"),
         max = "Máximo"
     ) |>
-    cols_align(align = "center", columns = everything()) |>
+    tab_source_note(
+        source_note = md("**Fonte**: base de dados.")
+    ) |>
+    cols_align(align = "right", columns = everything()) |>
+    cols_align(align = "left", columns = variavel) |>
     tab_style(
-        style = cell_text(align = "center"),
+        style = cell_text(align = "left"),
         locations = cells_stubhead()
+    ) |>
+    tab_style(
+        style = cell_text(align = "left"),
+        locations = list(cells_source_notes(), cells_footnotes())
     ) |>
     tab_options(
         table.width = "100%",
         column_labels.font.weight = "bold",
-        column_labels.padding = "10px"
+        column_labels.padding = "10px",
+        source_notes.font.size = px(12),
+        footnotes.font.size = px(12)
     ) |>
-    tab_source_note(
-        source_note = md("**Fonte**: base de dados.")
+    fmt_number(
+        columns = c(mean, sd, min, q1, median, q3, max),
+        decimals = 2,
+        dec_mark = ",",
+        sep_mark = "."
     )
 
 ```
@@ -703,18 +749,31 @@ medidas_descritivas |>
         q3 = md("$q_3$"),
         max = "Máximo"
     ) |>
-    cols_align(align = "center", columns = everything()) |>
+    tab_source_note(
+        source_note = md("**Fonte**: base de dados.")
+    ) |>
+    cols_align(align = "right", columns = everything()) |>
+    cols_align(align = "left", columns = variavel) |>
     tab_style(
-        style = cell_text(align = "center"),
+        style = cell_text(align = "left"),
         locations = cells_stubhead()
+    ) |>
+    tab_style(
+        style = cell_text(align = "left"),
+        locations = list(cells_source_notes(), cells_footnotes())
     ) |>
     tab_options(
         table.width = "100%",
         column_labels.font.weight = "bold",
-        column_labels.padding = "10px"
+        column_labels.padding = "10px",
+        source_notes.font.size = px(12),
+        footnotes.font.size = px(12)
     ) |>
-    tab_source_note(
-        source_note = md("**Fonte**: base de dados.")
+    fmt_number(
+        columns = c(mean, sd, min, q1, median, q3, max),
+        decimals = 2,
+        dec_mark = ",",
+        sep_mark = "."
     )
 
 ```
@@ -725,8 +784,7 @@ Iremos agora nos restringir a uma análise individual de cada variável
 quantitativa, em termos de distribuição geral, presença de pontos extremos e distribuição condicionada ao status da variável de interesse.
 Em seguida, iremos tratar das variáveis qualitativas.
 
-Após esta etapa, prosseguiremos com uma análise conjunta das variáveis e
-finalizaremos nossa exploração com um estudo de valores faltantes na base de dados.
+Após esta etapa, prosseguiremos e finalizaremos nossa exploração com uma análise conjunta das variáveis quantitativas e categóricas.
 
 ### Idade
 
@@ -780,13 +838,13 @@ credit_risk_clean |>
 ### Renda pessoal
 
 A renda dos tomadores é a variável com maior variabilidade, com desvio padrão de cerca de
-`r round((medidas_descritivas_nondefault |> filter(var_name == "person_income"))$sd, 0)` para 
-adimplentes (@tbl-desc-analysis-summary-nondefault) e `r round((medidas_descritivas_default |> filter(var_name == "person_income"))$sd, 0)` para 
+`r format(round((medidas_descritivas_nondefault |> filter(var_name == "person_income"))$sd, 0), big.mark = ".")` para 
+adimplentes (@tbl-desc-analysis-summary-nondefault) e `r format(round((medidas_descritivas_default |> filter(var_name == "person_income"))$sd, 0), big.mark = ".")` para 
 inadimplentes (@tbl-desc-analysis-summary-default).
 
 A renda pessoal apresenta acentuada assimetria positiva, caracterizada por uma cauda longa e distante da mediana,
 evidenciada pela expressiva concentração de outliers na porção superior da @fig-boxplot-person-income.
-O coeficiente de curtose de `r round(kurtosis(credit_risk_clean$person_income), 2)` atesta o padrão fortemente leptocúrtico da distribuição,
+O coeficiente de curtose de `r format(round(kurtosis(credit_risk_clean$person_income), 2), decimal.mark = ",")` atesta o padrão fortemente leptocúrtico da distribuição,
 confirmando o peso excessivo da cauda em relação a uma distribuição normal.
 
 ```{r}
@@ -865,7 +923,7 @@ gghist_person_income <- credit_risk_clean |>
     geom_histogram(bins = 15, fill = "steelblue", color = "white", alpha = 0.8) +
     theme_minimal(base_size = 11) +
     labs(
-        x = "Tempo em anos",
+        x = "Renda pessoal",
         y = "Frequência"
     )
 
@@ -883,9 +941,9 @@ gghist_person_income
 gghist_log_person_income
 ```
 
-A escala logarítmica reduz a curtose dos dados de `r round(kurtosis(credit_risk_clean$person_income), 2)`
-para `r round(kurtosis(log(credit_risk_clean$person_income), 2))`
-e possui um coeficiente de assimetria de `r round(skewness(log(credit_risk_clean$person_income)), 2)`, 
+A escala logarítmica reduz a curtose dos dados de `r format(round(kurtosis(credit_risk_clean$person_income), 2), decimal.mark = ",")`
+para `r format(round(kurtosis(log(credit_risk_clean$person_income)), 2), decimal.mark = ",")`
+e possui um coeficiente de assimetria de `r format(round(skewness(log(credit_risk_clean$person_income)), 2), decimal.mark = ",")`, 
 que descreve uma distribuição muito mais simétrica.
 
 
@@ -925,7 +983,7 @@ credit_risk_clean |>
 O gráfico de barras da @fig-bar-person-emp-length mostra que a variável possui
 uma distribuição assimétrica positiva, com cauda pesada à direita. Chama a
 atenção a manifestação de um fenômeno natural na variável: pessoas desempregadas
-são as que mais tomam empréstismos, e isso pode ser observado na figura.
+são as que mais tomam empréstimos, e isso pode ser observado na figura.
 
 ```{r}
 #| out-width: 100%
@@ -946,9 +1004,9 @@ credit_risk_clean |>
 
 ### Valor do empréstimo
 
-A média de empréstimos na base é de `r (medidas_descritivas |> filter(var_name == "loan_amnt"))$mean`.
+A média de empréstimos na base é de `r format((medidas_descritivas |> filter(var_name == "loan_amnt"))$mean, big.mark = ".", decimal.mark = ",")`.
 A mediana do segundo grupo da @fig-boxplot-loan-amnt indica que aqueles que não pagam costumam
-tomar empréstimos mais altos com maior frequência do que aqueles que pagam (o que é sinalizado pela
+tomar empréstimos mais altos com maior frequência do que aqueles que pagam (o que é sinalizado pelas
 cercas de Tukey mais amplas do segundo grupo em conjunto com um menor número de
 outliers).
 
@@ -996,7 +1054,7 @@ credit_risk_clean |>
 ### Taxa de juros
 
 A relação da taxa de juros com o status de inadimplência é bem clara. Como
-exibido na @fig-boxplot-loan-int-rate, o grupo de inadimplementes, por
+exibido na @fig-boxplot-loan-int-rate, o grupo de inadimplentes, por
 representarem um risco maior às instituições financeiras, contraem empréstimos
 com taxas de juros significativamente mais altas se comparado com o grupo dos
 que pagam em dia.
@@ -1051,8 +1109,8 @@ credit_risk_clean |>
 ```
 
 
-Já o histograma da taxa de juros demonstra que esta variável poussi uma
-assimetria positiva bem mais atenuada e uma cauda direta mais suave.
+Já o histograma da taxa de juros demonstra que esta variável possui uma
+assimetria positiva bem mais atenuada e uma cauda direita mais suave.
 
 ```{r}
 #| out-width: 100%
@@ -1104,14 +1162,14 @@ credit_risk_clean |>
 ```
 
 Enquanto os adimplentes costumam comprometer até 40% de suas rendas, os
-inadimplementes comprometem até um pouco mais de 60% de suas rendas. Isto sem
+inadimplentes comprometem até um pouco mais de 60% de suas rendas. Isto sem
 levar em conta os pontos exteriores (possíveis outliers). 
 
 Embora a tabela de medidas descritivas revele que há empréstimos que podem
 chegar a comprometer até
-`r (medidas_descritivas_default |> filter(var_name == "loan_percent_income"))$max * 100`%
-da renda do tomador. O histograma da distribuição mostra que no geral a
-maior parte dos empréstimos comprometem até metade da renda pessoal dos tomadores.
+`r (medidas_descritivas |> filter(var_name == "loan_percent_income"))$max * 100`%
+da renda do tomador, o histograma da distribuição mostra que no geral a
+maior parte dos empréstimos compromete até metade da renda pessoal dos tomadores.
 
 ```{r}
 #| out-width: 100%
@@ -1133,8 +1191,8 @@ credit_risk_clean |>
 ### Histórico de crédito
 
 O histórico de crédito médio dos tomadores de crédito é de cerca de
-`r (medidas_descritivas_default |> filter(var_name == "cb_person_cred_hist_length"))$mean` anos
-com desvio padrão de `r (medidas_descritivas_default |> filter(var_name == "cb_person_cred_hist_length"))$sd` anos,
+`r format((medidas_descritivas |> filter(var_name == "cb_person_cred_hist_length"))$mean, decimal.mark = ",")` anos
+com desvio padrão de `r format((medidas_descritivas |> filter(var_name == "cb_person_cred_hist_length"))$sd, decimal.mark = ",")` anos,
 de acordo com as medidas descritivas da @tbl-desc-analysis-summary.
 No geral a distribuição da variável é bastante semelhante entre os dois grupos
 (@fig-boxplot-cb-person-cred-hist-length).
@@ -1161,7 +1219,7 @@ credit_risk_clean |>
     theme_minimal(base_size = 11)
 ```
 
-O histórico mais longo observado é de `r (medidas_descritivas_default |> filter(var_name == "cb_person_cred_hist_length"))$max` anos.
+O histórico mais longo observado é de `r (medidas_descritivas |> filter(var_name == "cb_person_cred_hist_length"))$max` anos.
 O histograma da @fig-hist-cb-person-cred-hist-length mostra que a distribuição
 de frequências do histórico de crédito é monótona decrescente.
 
@@ -1208,16 +1266,16 @@ ggplot(credit_risk_clean, aes(y = fct_rev(fct_infreq(person_home_ownership)), fi
 
 Se observamos a distribuição conjunta da situação do empréstimo de acordo com o
 tipo de moradia, descrito na @tbl-dblentry-person-home-owner-ship, notamos que o
-número de inadimplentes dentro do grupo dos que possuem possuem imóvel
+número de inadimplentes dentro do grupo dos que possuem imóvel
 alugado é cerca de 3x maior que o número de inadimplentes do grupo que possui
-moradia própria. Também é constatado diferenças expressivas entre os demais
+moradia própria. Também são constatadas diferenças expressivas entre os demais
 grupos de moradia. Este é um bom indicativo de que existe uma relação concreta
 entre o tipo de moradia e a variável resposta situação do empréstimo.
 
 
 ```{r}
 #| label: tbl-dblentry-person-home-owner-ship
-#| tbl-cap: Distribuição conjunta das proporções da situação de empréstimo conforme o tipo de moradia do tomador
+#| tbl-cap: Distribuição conjunta das frequências da situação de empréstimo conforme o tipo de moradia do tomador
 
 tbl_contigency <- credit_risk_clean |>
     tabyl(person_home_ownership, loan_status) |> 
@@ -1230,18 +1288,34 @@ tbl_contigency |>
         columns = c("Adimplente", "Inadimplente", "Total"),
         label = "Situação do empréstimo"
     ) |>
-    cols_align(align = "center", columns = everything()) |>
+    tab_source_note(
+        source_note = md("**Fonte**: base de dados.")
+    ) |>
+    cols_align(align = "right", columns = everything()) |>
+    cols_align(align = "left", columns = person_home_ownership) |>
     tab_style(
-        style = cell_text(align = "center"),
+        style = cell_text(align = "left"),
         locations = cells_stubhead()
+    ) |>
+    tab_style(
+        style = cell_text(align = "left"),
+        locations = list(cells_source_notes(), cells_footnotes())
     ) |>
     tab_options(
         table.width = "100%",
         column_labels.font.weight = "bold",
-        column_labels.padding = "10px"
+        column_labels.padding = "10px",
+        source_notes.font.size = px(12),
+        footnotes.font.size = px(12)
     ) |>
-    tab_source_note(
-        source_note = md("**Fonte**: base de dados.")
+    fmt_integer(
+        columns = c("Adimplente", "Inadimplente", "Total"),
+        sep_mark = "."
+    ) |>
+    grand_summary_rows(
+        columns = -person_home_ownership,
+        fns = list(Total = ~ sum(., na.rm = TRUE)),
+        fmt = ~ fmt_integer(., sep_mark = ".")
     )
 ```
 
@@ -1277,7 +1351,7 @@ imobiliária e despesas médicas.
 
 ```{r}
 #| label: tbl-dblentry-loan-intent
-#| tbl-cap: Distribuição conjunta das proporções da situação de empréstimo conforme a finalidade
+#| tbl-cap: Distribuição conjunta das frequências da situação de empréstimo conforme a finalidade
 
 tbl_contigency <- credit_risk_clean |>
     tabyl(loan_intent, loan_status) |>
@@ -1290,18 +1364,34 @@ tbl_contigency |>
         columns = c("Adimplente", "Inadimplente", "Total"),
         label = "Situação do empréstimo"
     ) |>
-    cols_align(align = "center", columns = everything()) |>
+    tab_source_note(
+        source_note = md("**Fonte**: base de dados.")
+    ) |>
+    cols_align(align = "right", columns = everything()) |>
+    cols_align(align = "left", columns = loan_intent) |>
     tab_style(
-        style = cell_text(align = "center"),
+        style = cell_text(align = "left"),
         locations = cells_stubhead()
+    ) |>
+    tab_style(
+        style = cell_text(align = "left"),
+        locations = list(cells_source_notes(), cells_footnotes())
     ) |>
     tab_options(
         table.width = "100%",
         column_labels.font.weight = "bold",
-        column_labels.padding = "10px"
+        column_labels.padding = "10px",
+        source_notes.font.size = px(12),
+        footnotes.font.size = px(12)
     ) |>
-    tab_source_note(
-        source_note = md("**Fonte**: base de dados.")
+    fmt_integer(
+        columns = c("Adimplente", "Inadimplente", "Total"),
+        sep_mark = "."
+    ) |>
+    grand_summary_rows(
+        columns = -loan_intent,
+        fns = list(Total = ~ sum(., na.rm = TRUE)),
+        fmt = ~ fmt_integer(., sep_mark = ".")
     )
 ```
 
@@ -1336,7 +1426,7 @@ predominante da situação de empréstimo a partir de determinada categoria de
 risco de inadimplência. Podemos observar que as classes A, B e C são compostas
 majoritariamente por tomadores adimplentes. Enquanto que a partir da classe D
 esta situação se inverte e as categorias subsequentes de maior risco passam a
-serem compostas cada vez mais exclusivamente por inadimplentes. 
+ser compostas cada vez mais exclusivamente por inadimplentes. 
 
 Como esperado para uma régua de classificação de crédito, observa-se na
 @tbl-dblentry-loan-grade uma relação direta entre o grau de risco e a taxa de
@@ -1345,7 +1435,7 @@ variável para a modelagem do risco de crédito.
 
 ```{r}
 #| label: tbl-dblentry-loan-grade
-#| tbl-cap: Distribuição conjunta das proporções da situação de empréstimo conforme a classificação de risco
+#| tbl-cap: Distribuição conjunta das frequências da situação de empréstimo conforme a classificação de risco
 
 tbl_contigency <- credit_risk_clean |>
     tabyl(loan_grade, loan_status) |>
@@ -1358,18 +1448,34 @@ tbl_contigency |>
         columns = c("Adimplente", "Inadimplente", "Total"),
         label = "Situação do empréstimo"
     ) |>
-    cols_align(align = "center", columns = everything()) |>
+    tab_source_note(
+        source_note = md("**Fonte**: base de dados.")
+    ) |>
+    cols_align(align = "right", columns = everything()) |>
+    cols_align(align = "left", columns = loan_grade) |>
     tab_style(
-        style = cell_text(align = "center"),
+        style = cell_text(align = "left"),
         locations = cells_stubhead()
+    ) |>
+    tab_style(
+        style = cell_text(align = "left"),
+        locations = list(cells_source_notes(), cells_footnotes())
     ) |>
     tab_options(
         table.width = "100%",
         column_labels.font.weight = "bold",
-        column_labels.padding = "10px"
+        column_labels.padding = "10px",
+        source_notes.font.size = px(12),
+        footnotes.font.size = px(12)
     ) |>
-    tab_source_note(
-        source_note = md("**Fonte**: base de dados.")
+    fmt_integer(
+        columns = c("Adimplente", "Inadimplente", "Total"),
+        sep_mark = "."
+    ) |>
+    grand_summary_rows(
+        columns = -loan_grade,
+        fns = list(Total = ~ sum(., na.rm = TRUE)),
+        fmt = ~ fmt_integer(., sep_mark = ".")
     )
 ```
 
@@ -1404,7 +1510,7 @@ dobro do grupo dos que nunca ficaram devendo.
 
 ```{r}
 #| label: tbl-dblentry-cb-person-default-on-file
-#| tbl-cap: Distribuição conjunta das proporções da situação de empréstimo conforme o registro de inadimplência anterior
+#| tbl-cap: Distribuição conjunta das frequências da situação de empréstimo conforme o registro de inadimplência anterior
 
 tbl_contigency <- credit_risk_clean |>
     mutate(cb_person_default_on_file = fct_rev(cb_person_default_on_file)) |>
@@ -1416,26 +1522,42 @@ tbl_contigency |>
     tab_stubhead("Registro") |>
     tab_spanner(
         columns = c("Adimplente", "Inadimplente", "Total"),
-        label = "Situação do empréstimo (%)"
+        label = "Situação do empréstimo"
     ) |>
-    cols_align(align = "center", columns = everything()) |>
+    tab_source_note(
+        source_note = md("**Fonte**: base de dados.")
+    ) |>
+    cols_align(align = "right", columns = everything()) |>
+    cols_align(align = "left", columns = cb_person_default_on_file) |>
     tab_style(
-        style = cell_text(align = "center"),
+        style = cell_text(align = "left"),
         locations = cells_stubhead()
+    ) |>
+    tab_style(
+        style = cell_text(align = "left"),
+        locations = list(cells_source_notes(), cells_footnotes())
     ) |>
     tab_options(
         table.width = "100%",
         column_labels.font.weight = "bold",
-        column_labels.padding = "10px"
+        column_labels.padding = "10px",
+        source_notes.font.size = px(12),
+        footnotes.font.size = px(12)
     ) |>
-    tab_source_note(
-        source_note = md("**Fonte**: base de dados.")
+    fmt_integer(
+        columns = c("Adimplente", "Inadimplente", "Total"),
+        sep_mark = "."
+    ) |>
+    grand_summary_rows(
+        columns = -cb_person_default_on_file,
+        fns = list(Total = ~ sum(., na.rm = TRUE)),
+        fmt = ~ fmt_integer(., sep_mark = ".")
     )
 ```
 
-Cerca de `r (count_cb_person_default_on_file_yes$n)` (`r round(count_cb_person_default_on_file_yes$perc, 2)`%) dos empréstimos
-concedidos a pessoas que já possuíam registro de inadimplência em seus históricos, enquanto que
-`r (count_cb_person_default_on_file_no$n)` (`r round(count_cb_person_default_on_file_no$perc, 2)`%) dos empréstimos foram concedidos
+Cerca de `r format(count_cb_person_default_on_file_yes$n, big.mark = ".")` (`r format(round(count_cb_person_default_on_file_yes$perc, 2), decimal.mark = ",")`%) dos empréstimos
+foram concedidos a pessoas que já possuíam registro de inadimplência em seus históricos, enquanto que
+`r format(count_cb_person_default_on_file_no$n, big.mark = ".")` (`r format(round(count_cb_person_default_on_file_no$perc, 2), decimal.mark = ",")`%) dos empréstimos foram concedidos
 a pessoas que sempre pagam em dia.
 
 
@@ -1456,9 +1578,9 @@ count_loan_status_paid <- count_loan_status |>
 ```
 
 
-Na amostra saneada, nossa variável resposta revela que `r (count_loan_status_default$n)` (`r round(count_loan_status_default$perc, 2)`%) dos empréstimos concedidos
-tiveram um desfecho de inadimplência na base de dados, ao passo que apenas `r (count_loan_status_paid$n)` (`r round(count_loan_status_paid$perc, 2)`%)
-do total de `r nrow(credit_risk_clean)` empréstimos foram devidamente quitados.
+Na amostra saneada, nossa variável resposta revela que apenas `r format(count_loan_status_default$n, big.mark = ".")` (`r format(round(count_loan_status_default$perc, 2), decimal.mark = ",")`%) dos empréstimos concedidos
+tiveram um desfecho de inadimplência na base de dados, ao passo que `r format(count_loan_status_paid$n, big.mark = ".")` (`r format(round(count_loan_status_paid$perc, 2), decimal.mark = ",")`%)
+do total de `r format(nrow(credit_risk_clean), big.mark = ".")` empréstimos foram devidamente quitados.
 
 ## Análise conjunta
 
@@ -1474,8 +1596,8 @@ A matriz de correlação linear exibida na @fig-corr-matrix revela predomínio d
 associações fracas a nulas entre a maioria das variáveis explicativas numéricas,
 indicando baixo risco generalizado de redundância de informação. Destacam-se,
 contudo, dois pares específicos: a forte associação entre idade e tempo de
-histórico de crédito ($r > 0.80$), e a correlação positiva entre o montante do
-empréstimo e o comprometimento da renda ($r > 0.5$).
+histórico de crédito ($r > 0{,}80$), e a correlação positiva entre o montante do
+empréstimo e o comprometimento da renda ($r > 0{,}50$).
 
 ```{r}
 #| out-width: 100%
@@ -1517,7 +1639,7 @@ Essa última relação fica mais evidente por meio de um gráfico de dispersão.
 ```{r}
 #| out-width: 100%
 #| label: fig-dispersion-loan-amnt-vs-loan-percent-income
-#| fig-cap: Diagrama de dispersão entre idade e histórico de crédito
+#| fig-cap: Diagrama de dispersão entre valor do empréstimo e comprometimento da renda
 
 ggplot(credit_risk_clean, aes(x = loan_amnt, y = loan_percent_income)) +
   geom_point(alpha = 0.5) +
@@ -1527,11 +1649,11 @@ ggplot(credit_risk_clean, aes(x = loan_amnt, y = loan_percent_income)) +
     labs(
         x = "Valor do empréstimo",
         y = "Comprometimento da renda",
-        color = "Quantidade"
+        fill = "Nº de empréstimos"
     )
 ```
 
-A @fig-dispersion-loan-amnt-vs-loan-percent-income releva dois detalhes
+A @fig-dispersion-loan-amnt-vs-loan-percent-income revela dois detalhes
 importantes sobre a distribuição destas duas variáveis. Primeiro, a existência de faixas
 verticais em valores fixos de empréstimos como 20 mil, 25 mil e 30 mil. Esta informação mostra que as pessoas preferem
 contratar empréstimos em valores redondos, devido principalmente ao fator psicológico da simplificação,
@@ -1541,7 +1663,7 @@ empréstimos aumentam. Isto é explicado pelo fator da renda pessoal. Empréstim
 não costumam comprometer a renda da maioria das pessoas, mas como a renda em si
 possui uma vasta amplitude, à medida que os empréstimos tornam-se mais altos
 fica muito mais evidente a grande disparidade da capacidade de pagamento entre
-as pessoas devido à suas respectivas rendas.
+as pessoas devido às suas respectivas rendas.
 
 Como o comprometimento da renda é uma proporção derivada do valor do empréstimo dividido pela renda pessoal,
 as duas variáveis compartilham uma dependência matemática intrínseca, propensa a
@@ -1617,7 +1739,7 @@ probabilidade de inadimplência dos tomadores de empréstimo. Para isso, a base 
 foi dividida aleatoriamente em conjuntos de treino (70%) e teste (30%), com amostragem
 estratificada pela variável resposta para preservar a proporção de inadimplentes.
 A comparação dos modelos em termos de capacidade discriminatória e calibração foi
-conduzida no conjunto de treino por meio de validação cruzada em 10 partes (10-fold cross-validation).
+conduzida no conjunto de treino por meio de validação cruzada em 10 partes com 5 repetições (repeated 10-fold cross-validation).
 
 ```{r}
 #| label: training-definitions
@@ -1646,7 +1768,7 @@ etária de 20 a 40 anos. O nível de desbalanceamento da variável de interesse,
 situação do empréstimo, que indica se os empréstimos contraídos foram quitados ou não
 pelos tomadores, é de aproximadamente 22% de inadimplentes para 78% de
 adimplentes. Ao final da análise, constatamos que o tamanho da amostra
-remanescente após o tratamento dos dados foi de `r nrow(credit_risk_clean)`
+remanescente após o tratamento dos dados foi de `r format(nrow(credit_risk_clean), big.mark = ".")`
 observações.
 
 Um tamanho amostral amplo como este viabiliza a inclusão de todas as
@@ -1669,7 +1791,7 @@ glm_check_vif <- glm(loan_status ~ . - person_income + log(person_income),
     as.data.frame()
 
 glm_check_vif <- glm_check_vif |>
-    mutate(variables = nomes_legiveis[preditoras])
+    mutate(variables = coalesce(nomes_legiveis[rownames(glm_check_vif)], "Renda pessoal"))
 
 colnames(glm_check_vif) <- c("GVIF", "DF", "SGVIF", "variables")
 
@@ -1715,33 +1837,34 @@ glm_check_vif |>
 
 Geralmente, fatores de inflação da variância acima de 5 indicam problemas de multicolinearidade.
 Note que a última coluna da @tbl-gvif-detection está na escala
-da raiz quadrada, portanto, valores desta coluna superiores a 2.24 são indicadores de
-multicolinearidade. Dessa maneira, detecta-se 3 variáveis com multicolinearidade
-significante: risco de inadimplência, valor do empréstimo e taxa de juros.
+da raiz quadrada ($\text{GVIF}^{1/(2\times\text{Df})}$), portanto, valores desta coluna superiores a 2,24 são indicadores de
+multicolinearidade. Dessa maneira, detectam-se 3 variáveis com valores padronizados acima do limiar:
+valor do empréstimo, taxa de juros e comprometimento da renda, além do elevado $\text{GVIF}$ bruto
+apresentado pelo risco de inadimplência ($12{,}247$).
 
-Estas variáveis estão linearmente relacionadas com outras através de dois
+Estas variáveis estão fortemente relacionadas entre si por meio de dois
 grupos:
 
 - **Grupo 1**: valor do empréstimo, renda pessoal e comprometimento da renda.
 Sabemos da relação entre estas variáveis pela matriz de correlação da
-@fig-corr-matrix e o gráfico de dispersão da @fig-dispersion-loan-amnt-vs-loan-percent-income.
+@fig-corr-matrix e pelo gráfico de dispersão da @fig-dispersion-loan-amnt-vs-loan-percent-income.
 
 - **Grupo 2**: taxa de juros e risco de inadimplência. Sabemos da relação entre
   estas duas variáveis por meio do box plot da @fig-boxplot-loan-int-rate-vs-loan-grade.
 
 Vamos cuidar de cada grupo separadamente. Para o primeiro grupo, julgamos
-que a renda pessoal e o comprometimento da renda são muito mais informativas
+que a renda pessoal e o comprometimento da renda são muito mais informativos
 para o modelo e optamos pela remoção da variável valor do empréstimo por considerar
 que tanto a renda pessoal quanto o comprometimento da renda são mais
-informativas em relação à probabilidade de ocorrência de inadimplência num
-empréstimo. A renda pessoal fornece uma boa idea das condições de pagamento do
+informativos em relação à probabilidade de ocorrência de inadimplência num
+empréstimo. A renda pessoal fornece uma boa ideia das condições de pagamento do
 indivíduo. Já o comprometimento da renda está numa escala proporcional (0 a 1),
 o que permite a comparação entre diferentes indivíduos em relação à capacidade
 de pagamento.
 
-Em relação ao segundo grupo, vamos testar qual modelo prever melhor utilizando
-uma abordagem com validação cruzada em 10 partes. A ideia principal é utilizar
-as métricas da validação cruzada para confrontar a perfomance de um modelo que
+Em relação ao segundo grupo, vamos testar qual modelo prevê melhor utilizando
+uma abordagem com validação cruzada em 10 partes com 5 repetições. A ideia principal é utilizar
+as métricas da validação cruzada para confrontar a performance de um modelo que
 inclui a taxa de juros sem o risco de inadimplência contra um modelo que inclui
 o risco de inadimplência sem a taxa de juros. O modelo que se sair melhor
 indicará qual das duas variáveis permanecerá no conjunto de preditores para
@@ -1750,6 +1873,8 @@ ajuste dos modelos posteriores.
 ```{r}
 #| label: tbl-variable-selection
 #| tbl-cap: Métricas da validação cruzada para modelos sem taxa de juros e sem risco de inadimplência
+#| warning: false
+#| message: false
 
 # Remove loan_amnt and adjust two models, one without loan_int_rate and one without loan_grade
 # and check which of the two has the best performance.
@@ -1759,6 +1884,8 @@ logit_mod <- logistic_reg() |>
   set_engine("glm")
 
 rec_exclude_int_rate <- recipe(loan_status ~ ., data = train_data) |>
+  step_novel(all_nominal_predictors()) |>
+  step_other(all_nominal_predictors(), threshold = 0.02) |>
   step_log(person_income) |>
   step_rm(loan_amnt, loan_int_rate) |>
   step_dummy(all_nominal_predictors()) |>
@@ -1779,6 +1906,8 @@ exclude_int_rate_rs <-
 
 # Logit model without grade.
 rec_exclude_grade <- recipe(loan_status ~ ., data = train_data) |>
+  step_novel(all_nominal_predictors()) |>
+  step_other(all_nominal_predictors(), threshold = 0.02) |>
   step_log(person_income) |>
   step_rm(loan_amnt, loan_grade) |>
   step_dummy(all_nominal_predictors()) |>
@@ -1831,13 +1960,20 @@ bind_rows(
     ) |>
     tab_style(
         style = cell_text(align = "left"),
-        locations = cells_source_notes()
+        locations = list(cells_source_notes(), cells_footnotes())
     ) |>
     tab_options(
         table.width = "100%",
         column_labels.font.weight = "bold",
         column_labels.padding = "10px",
-        source_notes.font.size = px(11),
+        source_notes.font.size = px(12),
+        footnotes.font.size = px(12),
+    ) |>
+    fmt_number(
+        columns = c(mean, std_err),
+        decimals = 4,
+        dec_mark = ",",
+        sep_mark = "."
     )
 ```
 
@@ -1866,9 +2002,7 @@ glm_check_vif <- glm(
 
 glm_check_vif <- glm_check_vif |>
     mutate(
-        variables = nomes_legiveis[
-            preditoras[!preditoras %in% c("loan_amnt", "loan_int_rate")]
-        ]
+        variables = coalesce(nomes_legiveis[rownames(glm_check_vif)], "Renda pessoal")
     )
 
 colnames(glm_check_vif) <- c("GVIF", "DF", "SGVIF", "variables")
@@ -1879,6 +2013,10 @@ glm_check_vif |>
     cols_label(
         DF = "Graus de liberdade",
         SGVIF = html("GVIF<sup>1/(2&times;Df)</sup>")
+    ) |>
+    tab_footnote(
+        footnote = md("**Nota:** a variável de renda pessoal foi transformada para a escala logarítmica."),
+        locations = cells_stub(rows = contains(nomes_legiveis["person_income"], ignore.case = TRUE)) # Locate the line automatically.
     ) |>
     tab_source_note(
         source_note = md("**Fonte**: Elaboração própria.")
@@ -1891,18 +2029,25 @@ glm_check_vif |>
     ) |>
     tab_style(
         style = cell_text(align = "left"),
-        locations = cells_source_notes()
+        locations = list(cells_source_notes(), cells_footnotes())
     ) |>
     tab_options(
         table.width = "100%",
         column_labels.font.weight = "bold",
         column_labels.padding = "10px",
-        source_notes.font.size = px(11),
+        source_notes.font.size = px(12),
+        footnotes.font.size = px(12),
+    ) |>
+    fmt_number(
+        columns = c(GVIF, SGVIF),
+        decimals = 3,
+        dec_mark = ",",
+        sep_mark = "."
     )
 ```
 
 Como podemos observar na tabela acima, todas as variáveis preditoras restantes
-apresentam um fator de inflação padronizado inferior a 2.24, indicando que não
+apresentam um fator de inflação padronizado inferior a 2,24, indicando que não
 há mais problemas de multicolinearidade entre os preditores.
 
 ## Comparação e seleção de modelos
@@ -1915,6 +2060,8 @@ Brier, Log-Loss e AUC-ROC.
 
 ```{r}
 #| label: cv-logit-model
+#| warning: false
+#| message: false
 
 # Model, recipe, workflow.
 logit_mod <-
@@ -1959,6 +2106,8 @@ logit_fit_rs_preds <-
 
 ```{r}
 #| label: cv-probit-model
+#| warning: false
+#| message: false
 
 # Model, recipe, workflow.
 probit_mod <-
@@ -1993,6 +2142,8 @@ probit_fit_rs_preds <-
 
 ```{r}
 #| label: cv-cloglog-model
+#| warning: false
+#| message: false
 
 # Model, recipe, workflow.
 cloglog_mod <-
@@ -2058,19 +2209,28 @@ bind_rows(
         source_note = md("**Fonte**: Elaboração própria.")
     ) |>
     cols_align(align = "right", columns = everything()) |>
+    cols_align(align = "left", columns = model) |>
+    cols_align(align = "center", columns = .metric) |>
     tab_style(
         style = cell_text(align = "left"),
         locations = cells_stubhead()
     ) |>
     tab_style(
         style = cell_text(align = "left"),
-        locations = cells_source_notes()
+        locations = list(cells_source_notes(), cells_footnotes())
     ) |>
     tab_options(
-        table.width = "65%",
+        table.width = "100%",
         column_labels.font.weight = "bold",
         column_labels.padding = "10px",
-        source_notes.font.size = px(11),
+        source_notes.font.size = px(12),
+        footnotes.font.size = px(12),
+    ) |>
+    fmt_number(
+        columns = c(mean, std_err),
+        decimals = 4,
+        dec_mark = ",",
+        sep_mark = "."
     )
 ```
 
@@ -2081,7 +2241,7 @@ O melhor modelo de acordo com cada métrica foi:
 - AUC-ROC: modelo probit.
 
 Contudo, as discrepâncias empíricas entre os três modelos foram residuais
-(inferiores a 0.01 em todas as métricas), caracterizando uma equivalência prática de desempenho.
+(inferiores a 0,01 em todas as métricas), caracterizando uma equivalência prática de desempenho.
 Esse comportamento reflete-se na sobreposição quase perfeita das curvas ROC apresentadas na
 @fig-roc-curve-cv-models, evidenciando capacidades discriminatórias essencialmente indistinguíveis.
 
@@ -2141,7 +2301,7 @@ logit_last_fit <-
     )
 ```
 
-Com a regressão logistíca selecionada, realiza-se o ajuste do modelo final
+Com a regressão logística selecionada, realiza-se o ajuste do modelo final
 utilizando a amostra de treinamento completa. Os coeficientes do modelo ajustado
 são exibidos a seguir, na @tbl-logit-last-fit.
 
@@ -2173,7 +2333,7 @@ logit_last_fit |>
     tidy(exponentiate = TRUE, conf.int = TRUE) |>
     select(term, estimate, conf.low, conf.high, p.value) |>
     mutate(across(-c(term, p.value), \(x) round(x, 4))) |>
-    mutate(p.value = label_scientific(digits = 4)(p.value)) |>
+    mutate(p.value = label_scientific(digits = 4, decimal.mark = ",")(p.value)) |>
     mutate(term = logit_fit_terms[term]) |>
     gt(rowname_col = "term") |>
     tab_stubhead("Termos") |>
@@ -2194,17 +2354,24 @@ logit_last_fit |>
     ) |>
     tab_style(
         style = cell_text(align = "left"),
-        locations = cells_source_notes()
+        locations = list(cells_source_notes(), cells_footnotes())
     ) |>
     tab_options(
         table.width = "100%",
         column_labels.font.weight = "bold",
         column_labels.padding = "10px",
-        source_notes.font.size = px(11),
+        source_notes.font.size = px(12),
+        footnotes.font.size = px(12),
+    ) |>
+    fmt_number(
+        columns = c(estimate, conf.low, conf.high),
+        decimals = 4,
+        dec_mark = ",",
+        sep_mark = "."
     )
 ```
 
-Em seguida, podemos avaliar o desempenho do modelo final no conjusto de teste,
+Em seguida, podemos avaliar o desempenho do modelo final no conjunto de teste,
 por meio da @tbl-logit-last-fit-metrics.
 
 ```{r}
@@ -2235,19 +2402,26 @@ collect_metrics(logit_last_fit) |>
     ) |>
     tab_style(
         style = cell_text(align = "left"),
-        locations = cells_source_notes()
+        locations = list(cells_source_notes(), cells_footnotes())
     ) |>
     tab_options(
-        table.width = "65%",
+        table.width = "100%",
         column_labels.font.weight = "bold",
         column_labels.padding = "10px",
         source_notes.font.size = px(12),
+        footnotes.font.size = px(12),
+    ) |>
+    fmt_number(
+        columns = .estimate,
+        decimals = 4,
+        dec_mark = ",",
+        sep_mark = "."
     )
 ```
 
 Os resultados demonstram que o desempenho do modelo no conjunto de teste foi
 consistente com o desempenho observado na validação cruzada (@tbl-cv-metrics), reforçando a
-robustez do modelo final selecionado. A área sob a curva ROC (AUC) de 0.87
+robustez do modelo final selecionado. A área sob a curva ROC (AUC) de aproximadamente 0,88
 indica uma ótima capacidade discriminatória do modelo.
 A @fig-roc-curve-logit-last-fit apresenta
 a curva ROC do modelo final no conjunto de teste.
@@ -2270,13 +2444,82 @@ collect_predictions(logit_last_fit) |>
     )
 ```
 
-Também ajustamos a matriz de confusão do modelo final no conjunto de teste,
-apresentada na @tbl-confusion-matrix-logit-last-fit.
+Também ajustamos a matriz de confusão do modelo final no conjunto de teste
+adotando o ponto de corte padrão de $0{,}50$, apresentada na @tbl-confusion-matrix-logit-last-fit.
 
 ```{r}
 #| label: tbl-confusion-matrix-logit-last-fit
 #| tbl-cap: Matriz de confusão do modelo logístico final no conjunto de teste
 
-# pass
+logit_test_preds <- collect_predictions(logit_last_fit) |>
+    mutate(
+        .pred_class = factor(
+            if_else(.pred_Inadimplente >= 0.5, "Inadimplente", "Adimplente"),
+            levels = c("Adimplente", "Inadimplente")
+        )
+    )
+
+logit_conf_mat <- logit_test_preds |>
+    tabyl(.pred_class, loan_status) |>
+    adorn_totals("col", name = "Total")
+
+logit_acc <- accuracy(logit_test_preds, truth = loan_status, estimate = .pred_class, event_level = "second")$.estimate
+logit_sens <- sens(logit_test_preds, truth = loan_status, estimate = .pred_class, event_level = "second")$.estimate
+logit_spec <- spec(logit_test_preds, truth = loan_status, estimate = .pred_class, event_level = "second")$.estimate
+logit_prec <- precision(logit_test_preds, truth = loan_status, estimate = .pred_class, event_level = "second")$.estimate
+
+logit_conf_mat |>
+    gt(rowname_col = ".pred_class") |>
+    tab_stubhead("Predição") |>
+    tab_spanner(
+        columns = c("Adimplente", "Inadimplente", "Total"),
+        label = "Situação observada"
+    ) |>
+    tab_footnote(
+        footnote = md("**Nota:** classificações obtidas adotando o ponto de corte padrão de 0,50 para a probabilidade predita de inadimplência."),
+        locations = cells_stubhead()
+    ) |>
+    tab_source_note(
+        source_note = md("**Fonte**: Elaboração própria.")
+    ) |>
+    cols_align(align = "right", columns = everything()) |>
+    cols_align(align = "left", columns = .pred_class) |>
+    tab_style(
+        style = cell_text(align = "left"),
+        locations = cells_stubhead()
+    ) |>
+    tab_style(
+        style = cell_text(align = "left"),
+        locations = list(cells_source_notes(), cells_footnotes())
+    ) |>
+    tab_options(
+        table.width = "100%",
+        column_labels.font.weight = "bold",
+        column_labels.padding = "10px",
+        source_notes.font.size = px(12),
+        footnotes.font.size = px(12)
+    ) |>
+    fmt_integer(
+        columns = c("Adimplente", "Inadimplente", "Total"),
+        sep_mark = "."
+    ) |>
+    grand_summary_rows(
+        columns = -.pred_class,
+        fns = list(Total = ~ sum(., na.rm = TRUE)),
+        fmt = ~ fmt_integer(., sep_mark = ".")
+    )
 ```
+
+A partir dos resultados da @tbl-confusion-matrix-logit-last-fit, observa-se que o modelo
+atingiu uma acurácia global de `r format(round(logit_acc * 100, 2), decimal.mark = ",")`% no conjunto de teste ($n = `r format(nrow(logit_test_preds), big.mark = ".")`$).
+Entre os `r format(sum(logit_test_preds$loan_status == "Adimplente"), big.mark = ".")` tomadores efetivamente adimplentes, o modelo classificou corretamente
+`r format(sum(logit_test_preds$.pred_class == "Adimplente" & logit_test_preds$loan_status == "Adimplente"), big.mark = ".")` casos, resultando em uma elevada especificidade de
+`r format(round(logit_spec * 100, 2), decimal.mark = ",")`% e apenas `r format(sum(logit_test_preds$.pred_class == "Inadimplente" & logit_test_preds$loan_status == "Adimplente"), big.mark = ".")` falsos positivos
+(precisão de `r format(round(logit_prec * 100, 2), decimal.mark = ",")`% nas predições de inadimplência).
+
+Por outro lado, entre os `r format(sum(logit_test_preds$loan_status == "Inadimplente"), big.mark = ".")` casos reais de inadimplência, o modelo identificou
+corretamente `r format(sum(logit_test_preds$.pred_class == "Inadimplente" & logit_test_preds$loan_status == "Inadimplente"), big.mark = ".")` operações (sensibilidade de `r format(round(logit_sens * 100, 2), decimal.mark = ",")`%),
+enquanto `r format(sum(logit_test_preds$.pred_class == "Adimplente" & logit_test_preds$loan_status == "Inadimplente"), big.mark = ".")` inadimplentes foram classificados como adimplentes (falsos negativos).
+Essa menor sensibilidade frente à especificidade decorre diretamente da adoção do ponto de corte padrão ($0{,}50$)
+em uma base desbalanceada (~22% de inadimplentes). Em aplicações práticas de concessão de crédito, nas quais o custo financeiro de um falso negativo (conceder crédito a um inadimplente) costuma superar o custo de oportunidade de um falso positivo, esse limiar de decisão pode ser reduzido estrategicamente para ampliar a sensibilidade do modelo.
 
