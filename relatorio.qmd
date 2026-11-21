@@ -41,7 +41,7 @@ p {
 library("pacman")
 p_load("tidyverse", "rio", "gt", "labelled", "moments", "janitor", "corrr", "ggcorrplot", "patchwork", "scales", "hexbin")
 p_load("tidymodels", "dotwhisker", "skimr", "car", "forcats")
-options(scipen = 999)
+options(scipen = 999, OutDec = ",")
 ```
 
 \newpage
@@ -266,7 +266,6 @@ medidas_descritivas_nondefault <- credit_risk |>
         max = max(valor, na.rm = TRUE)
     ) |>
     mutate(var_name = variavel) |>
-    mutate(across(-c(variavel, var_name), \(x) round(x, 2))) |>
     mutate(variavel = coalesce(nomes_legiveis[variavel], variavel))
 
 medidas_descritivas_nondefault |>
@@ -376,20 +375,29 @@ medidas_descritivas_default |>
 ```
 
 Inspecionando brevemente as medidas das tabelas, não há dados negativos, porém detecta-se problemas lógicos em duas variáveis: idade do tomador e tempo no emprego atual.
-O máximo dessas variáveis revela outliers situados a uma distância consideravelmente alta do 3º quartil de suas respectivas distribuições, que torna o dado implausível quando
+O máximo dessas variáveis revela outliers situados a uma distância consideravelmente alta do 3º quartil de suas respectivas distribuições, o que torna o dado implausível quando
 confrontado com a natureza lógica da variável. Por exemplo, é biologicamente impossível que uma pessoa tenha mais de 140 anos (@tbl-desc-analysis-summary-nondefault-preview) ou
 tenha permanecido no mesmo emprego por `r max(credit_risk$person_emp_length, na.rm = TRUE)` anos (@tbl-desc-analysis-summary-nondefault-preview e @tbl-desc-analysis-summary-default-preview).
 
 Alguns desses pontos discrepantes podem representar erros cadastrais e de
 mensuração ou, alternativamente, revelar valores atípicos extremos legítimos, a exemplo
-da expressiva renda pessoal máxima observada de `r format(max(credit_risk$person_income), big.mark = ".", scientific = FALSE)`. No entanto,
-independentemente do motivo, a presença destes outliers pode distorcer a
+da expressiva renda pessoal máxima observada de
+`r format(max(credit_risk$person_income), big.mark = ".", scientific = FALSE)`
+(@tbl-desc-analysis-summary-nondefault-preview).
+No entanto, independentemente do motivo, a presença destes outliers pode distorcer a
 interpretação do comportamento real da população e comprometer qualquer inferência realizada sobre os dados.
 Daí surge a necessidade de analisar e tratar individualmente estas variáveis.
 
+Foi aferido após a inspeção da @tbl-desc-analysis-summary-nondefault-preview,
+mais especificamente, o mínimo da variável compromentimento da renda que consta como zero,
+que existem `r nrow(credit_risk |> filter(loan_percent_income == 0))` observações na base com esta discrepância.
+Tendo elas valores de rendas e valores de empréstimos positivos. Portanto, o comprometimento da renda
+será corrigido para estes registros, obtendo-o através da razão entre o valor do empréstimo e a
+renda correspondente do tomador.
+
 Além disso, detectou-se a existência de dados
 faltantes em duas variáveis: taxa de juros e tempo de emprego atual. O número de
-observações faltantes em cada uma destas duas variáveis juntamente com a
+observações faltantes em cada uma destas duas variáveis, juntamente com a
 proporção de perda em relação ao tamanho da amostra ($n = `r format(nrow(credit_risk), big.mark = ".")`$) é apresentado no gráfico
 de barras a seguir.
 
@@ -448,28 +456,32 @@ A @fig-boxplot-age-and-person-emp-length-preview apresenta uma comparação das 
 #|   - Distribuição dos tempos de emprego dos tomadores de crédito
 
 ggplot(credit_risk_omit, aes(y = person_age)) +
-  geom_boxplot(
-    outlier.color = "red",
-    outlier.size = 1,
-    fill = "steelblue",
-    width = 0.5,
-    show.legend = FALSE
-  ) +
-  scale_y_continuous(breaks = seq(20, 140, by = 20)) +
-  labs(y = "Idade (anos)") +
-  theme_minimal(base_size = 11)
+    geom_boxplot(
+        outlier.color = "red",
+        outlier.size = 1,
+        fill = "steelblue",
+        width = 0.5,
+        show.legend = FALSE
+    ) +
+    scale_y_continuous(breaks = seq(20, 140, by = 20)) +
+    labs(y = "Idade (anos)") +
+    theme_minimal(base_size = 11) +
+    theme(axis.text.x = element_blank(), axis.ticks.x = element_blank()) +
+    labs(x = NULL)
 
 ggplot(credit_risk_omit, aes(y = person_emp_length)) +
-  geom_boxplot(
-    outlier.color = "red",
-    outlier.size = 1,
-    fill = "steelblue",
-    width = 0.5,
-    show.legend = FALSE
-  ) +
-  scale_y_continuous(breaks = seq(20, 140, by = 20)) +
-  labs(y = "Tempo de emprego (anos)") +
-  theme_minimal(base_size = 11)
+    geom_boxplot(
+      outlier.color = "red",
+      outlier.size = 1,
+      fill = "steelblue",
+      width = 0.5,
+      show.legend = FALSE
+    ) +
+    scale_y_continuous(breaks = seq(20, 140, by = 20)) +
+    labs(y = "Tempo de emprego (anos)") +
+    theme_minimal(base_size = 11) +
+    theme(axis.text.x = element_blank(), axis.ticks.x = element_blank()) +
+    labs(x = NULL)
 ```
 
 
@@ -495,6 +507,13 @@ credit_risk_clean <- credit_risk__omit |>
     person_age >= 20,
     person_age <= 40,
     person_age - person_emp_length >= 16
+  ) |>
+  mutate(
+    loan_percent_income = if_else(
+      loan_percent_income == 0,
+      loan_amnt / person_income,
+      loan_percent_income
+    )
   )
 
 new_person_age__omit__lte_40 <- nrow(credit_risk_clean)
@@ -509,7 +528,7 @@ Poderíamos então seguir o comportamento convencional já estabelecido no merca
 esta justificativa apresentada. Contudo, neste estudo, nos propomos a trabalhar com a
 modelagem de regressão para previsão da incidência de inadimplência em empréstimos restrita a um público mais jovem, na faixa etária de 20 a 40 anos.
 Consideramos a idade mínima para começar a trabalhar como sendo 16
-anos, padrão adotado pela maioria dos países. Naturalmente, isso implica na
+anos, padrão adotado pela maioria dos países. Naturalmente, isso a
 remoção de quaisquer observações em que a diferença entre a idade e o tempo de emprego seja inferior a 16 anos,
 cenário que seria infactível dentro do critério adotado.
 
@@ -520,14 +539,14 @@ restrição a este intervalo etário possibilita o aprimoramento da modelagem
 estatística voltada a um público mais importante para as instituições financeiras. 
 
 No nosso conjunto de dados, a proporção dos empréstimos concedidos nesta faixa etária representa
-cerca de `r format(new_person_age__lte_40, big.mark = ".")` das `r format(nrow(credit_risk), big.mark = ".")` observações sobre a amostra original (`r format(round(new_person_age_prop__lte_40 * 100, 2), decimal.mark = ",")`%).
+`r format(new_person_age__lte_40, big.mark = ".")` das `r format(nrow(credit_risk), big.mark = ".")` observações sobre a amostra original (`r format(round(new_person_age_prop__lte_40 * 100, 2), decimal.mark = ",")`%).
 Com a remoção das observações faltantes mencionadas anteriormente, esta faixa etária representa
 `r format(new_person_age__omit__lte_40, big.mark = ".")` das `r format(nrow(credit_risk__omit), big.mark = ".")` observações (`r format(round(new_person_age_prop__omit__lte_40 * 100, 2), decimal.mark = ",")`%).
 Portanto, fica claro que estes indivíduos são responsáveis por representar uma alta densidade
 amostral dentro do intervalo. Não há desvantagens operacionais com esta
 decisão, pois como visto, o tamanho amostral permanece alto e mais do que o
 suficiente para uma modelagem, além de que o desbalanceamento da variável
-resposta é essencialmente equivalente à situação original, conforme mostra a @fig-piechart-loan-status;
+resposta é essencialmente equivalente à situação original da @fig-piechart-loan-status-preview, conforme mostra a @fig-piechart-loan-status;
 eliminam-se, por consequência, anomalias cadastrais evidentes (como registros com idades superiores a 120 anos).
 
 ```{r}
@@ -569,14 +588,13 @@ max_diff_ratio_loan_percent_income <- max(abs(credit_risk$loan_amnt / credit_ris
 ```
 
 
-Ainda no âmbito das inconsistências das idades, verificou-se que não havia
-observações em que a idade era inferior ao tempo no emprego atual e tampouco
-era inferior ao histórico de crédito. Por fim, foi calculada a razão entre o
-valor do empréstimo e a renda pessoal do tomador e obteve-se a diferença absoluta com os valores correspondentes
-da variável do comprometimento da renda. A maior diferença observada foi de
-`r format(round(max_diff_ratio_loan_percent_income, 2), decimal.mark = ",")`, possivelmente causada por erros
-de arredondamento. Por conveniência, optou-se por continuar utilizando a
-variável de comprometimento de renda original.
+Por fim, foi calculada a razão entre o valor do empréstimo e a renda pessoal do tomador
+e obteve-se a diferença absoluta com os valores correspondentes da variável do
+comprometimento da renda. A maior diferença observada foi de
+`r format(round(max_diff_ratio_loan_percent_income, 2), decimal.mark = ",")`,
+possivelmente causada por erros de arredondamento. Por conveniência, optou-se
+por continuar utilizando a variável de comprometimento de renda original,
+com exceção dos registros zerados corrigidos anteriormente.
 
 Após a constatação das inconsistências e a remoção das
 `r format(nrow(credit_risk) - nrow(credit_risk_clean), big.mark = ".")` observações apuradas,
@@ -602,7 +620,6 @@ medidas_descritivas_nondefault <- credit_risk_clean |>
         max = max(valor, na.rm = TRUE)
     ) |>
     mutate(var_name = variavel) |>
-    mutate(across(-c(variavel, var_name), \(x) round(x, 2))) |>
     mutate(variavel = coalesce(nomes_legiveis[variavel], variavel))
 
 medidas_descritivas_nondefault |>
@@ -617,6 +634,13 @@ medidas_descritivas_nondefault |>
         median = "Mediana",
         q3 = md("$q_3$"),
         max = "Máximo"
+    ) |>
+    tab_footnote(
+        footnote = md("**Nota:** valor positivo próximo a zero (0,0021), exibido como 0,00 devido ao arredondamento para duas casas decimais."),
+        locations = cells_body(
+            columns = min,
+            rows = variavel == "Comprometimento da renda"
+        )
     ) |>
     tab_source_note(
         source_note = md("**Fonte**: base de dados.")
@@ -733,7 +757,6 @@ medidas_descritivas <- credit_risk_clean |>
         max = max(valor, na.rm = TRUE)
     ) |>
     mutate(var_name = variavel) |>
-    mutate(across(-c(variavel, var_name), \(x) round(x, 2))) |>
     mutate(variavel = coalesce(nomes_legiveis[variavel], variavel))
 
 medidas_descritivas |>
@@ -748,6 +771,13 @@ medidas_descritivas |>
         median = "Mediana",
         q3 = md("$q_3$"),
         max = "Máximo"
+    ) |>
+    tab_footnote(
+        footnote = md("**Nota:** valor positivo próximo a zero (0,0021), exibido como 0,00 devido ao arredondamento para duas casas decimais."),
+        locations = cells_body(
+            columns = min,
+            rows = variavel == "Comprometimento da renda"
+        )
     ) |>
     tab_source_note(
         source_note = md("**Fonte**: base de dados.")
@@ -1074,6 +1104,7 @@ credit_risk_clean |>
         show.legend = FALSE
     ) +
     scale_fill_manual(values = c("Adimplente" = "#9ecae1", "Inadimplente" = "#6baed6")) +
+    scale_y_continuous(labels = scales::percent_format(scale = 1)) +
     labs(
         x = "Situação do empréstimo",
         y = "Taxa de juros"
@@ -1101,6 +1132,7 @@ credit_risk_clean |>
         show.legend = FALSE,
         fill = "deepskyblue"
     ) +
+    scale_y_continuous(labels = scales::percent_format(scale = 1)) +
     labs(
         x = "Risco de inadimplência",
         y = "Taxa de juros"
@@ -1241,242 +1273,444 @@ credit_risk_clean |>
 
 ### Tipo de moradia
 
-De acordo com a @fig-hbar-person-home-ownership, os dois grupos que mais
-contratam empréstimos são as pessoas com casas alugadas e financiadas.
+Conforme ilustrado pela @fig-hbar-person-home-ownership, dentro de cada categoria de tipo de moradia,
+a proporção de inadimplentes é consideravelmente maior entre tomadores que vivem em imóveis alugados
+ou em outras modalidades de moradia, em comparação aos que possuem imóvel próprio ou financiado.
+Este é um bom indicativo de que existe uma relação concreta entre o tipo de moradia e a variável
+resposta situação do empréstimo.
+
 
 ```{r}
 #| out-width: 100%
 #| label: fig-hbar-person-home-ownership
 #| fig-cap: Distribuição do tipo de moradia
 
-ggplot(credit_risk_clean, aes(y = fct_rev(fct_infreq(person_home_ownership)), fill = factor(loan_status))) +
-  geom_bar(position = "dodge", width = 0.7) +
+ggplot(credit_risk_clean, aes(
+  y = fct_rev(fct_infreq(person_home_ownership)),
+  fill = loan_status
+)) +
+  geom_bar(
+    aes(x = after_stat(count / tapply(count, y, sum)[y])),
+    position = position_dodge(width = 0.7, reverse = TRUE),
+    width = 0.7
+  ) +
+  scale_fill_manual(values = c("Adimplente" = "#2b8cbe", "Inadimplente" = "#e34a33")) +
   theme_minimal(base_size = 11) +
   theme(
     panel.grid.major.y = element_blank(),
     panel.grid.minor = element_blank()
   ) +
+  geom_text(
+    aes(
+      x = after_stat(count / tapply(count, y, sum)[y]),
+      label = scales::percent(after_stat(count / tapply(count, y, sum)[y]), accuracy = 0.1)
+    ),
+    stat = "count",
+    position = position_dodge(width = 0.7, reverse = TRUE),
+    hjust = -0.15,
+    size = 3.5
+  ) +
+  scale_x_continuous(
+    labels = scales::percent_format(accuracy = 1),
+    limits = c(0, 1.05), # Vai até 100% com margem para o texto
+    breaks = seq(0, 1, 0.25)
+  ) +
   labs(
-    x = "Quantidade de empréstimos",
+    title = "Situação dos empréstimos por tipo de moradia",
+    subtitle = "Proporção percentual dentro de cada categoria",
+    x = NULL, # Como o subtítulo já explica e há rótulos nas barras, o título do eixo X fica opcional
     y = "Tipo de moradia",
-    fill = "Situação dos empréstimos"
+    fill = "Situação"
   )
 ```
 
 
-Se observamos a distribuição conjunta da situação do empréstimo de acordo com o
-tipo de moradia, descrito na @tbl-dblentry-person-home-owner-ship, notamos que o
-número de inadimplentes dentro do grupo dos que possuem imóvel
-alugado é cerca de 3x maior que o número de inadimplentes do grupo que possui
-moradia própria. Também são constatadas diferenças expressivas entre os demais
-grupos de moradia. Este é um bom indicativo de que existe uma relação concreta
-entre o tipo de moradia e a variável resposta situação do empréstimo.
+```{r}
+#| label: dblentry-person-home-ownership
 
+# 1. Calcula as proporções em relação ao total de cada coluna
+tbl_contigency <- credit_risk_clean |>
+  tabyl(person_home_ownership, loan_status) |>
+  adorn_totals("col", name = "Total") |>
+  mutate(
+    pct_adimp = Adimplente / sum(Adimplente),
+    pct_inadimp = Inadimplente / sum(Inadimplente),
+    pct_total = Total / sum(Total)
+  )
+
+pct_alug_financ <- tbl_contigency |>
+  filter(person_home_ownership %in% c("Alugada", "Financiada")) |>
+  pull(pct_inadimp) |>
+  sum() |>
+  scales::percent(accuracy = 0.1)
+```
+
+
+Já ao observarmos a distribuição conjunta da situação do empréstimo de acordo com o
+tipo de moradia, descrito na @tbl-dblentry-person-home-ownership, notamos que a
+maior parte dos empréstimos é concecido a tomadores que residem em imóveis
+alugados ou financiados, sendo estes dois grupos os que concentram a maior parte
+dos inadimplentes, cerca de `r pct_alug_financ`.
 
 ```{r}
-#| label: tbl-dblentry-person-home-owner-ship
+#| label: tbl-dblentry-person-home-ownership
 #| tbl-cap: Distribuição conjunta das frequências da situação de empréstimo conforme o tipo de moradia do tomador
 
-tbl_contigency <- credit_risk_clean |>
-    tabyl(person_home_ownership, loan_status) |> 
-    adorn_totals("col", name = "Total")
 
+# 2. Constrói a tabela gt
 tbl_contigency |>
-    gt(rowname_col = "person_home_ownership") |>
-    tab_stubhead("Tipo de moradia") |>
-    tab_spanner(
-        columns = c("Adimplente", "Inadimplente", "Total"),
-        label = "Situação do empréstimo"
-    ) |>
-    tab_source_note(
-        source_note = md("**Fonte**: base de dados.")
-    ) |>
-    cols_align(align = "right", columns = everything()) |>
-    cols_align(align = "left", columns = person_home_ownership) |>
-    tab_style(
-        style = cell_text(align = "left"),
-        locations = cells_stubhead()
-    ) |>
-    tab_style(
-        style = cell_text(align = "left"),
-        locations = list(cells_source_notes(), cells_footnotes())
-    ) |>
-    tab_options(
-        table.width = "100%",
-        column_labels.font.weight = "bold",
-        column_labels.padding = "10px",
-        source_notes.font.size = px(12),
-        footnotes.font.size = px(12)
-    ) |>
-    fmt_integer(
-        columns = c("Adimplente", "Inadimplente", "Total"),
-        sep_mark = "."
-    ) |>
-    grand_summary_rows(
-        columns = -person_home_ownership,
-        fns = list(Total = ~ sum(., na.rm = TRUE)),
-        fmt = ~ fmt_integer(., sep_mark = ".")
-    )
+  gt(rowname_col = "person_home_ownership") |>
+  tab_stubhead("Tipo de moradia") |>
+  tab_spanner(
+    columns = c("Adimplente", "Inadimplente", "Total"),
+    label = "Situação do empréstimo"
+  ) |>
+  fmt_integer(
+    columns = c("Adimplente", "Inadimplente", "Total"),
+    sep_mark = "."
+  ) |>
+  # Formata as porcentagens com zero à esquerda (ex: 09,1% e 00,3%)
+  fmt(
+    columns = starts_with("pct_"),
+    fns = function(x) {
+      gsub("\\.", ",", sprintf("%04.1f%%", x * 100))
+    }
+  ) |>
+  cols_merge(
+    columns = c(Adimplente, pct_adimp),
+    pattern = "{1} ({2})"
+  ) |>
+  cols_merge(
+    columns = c(Inadimplente, pct_inadimp),
+    pattern = "{1} ({2})"
+  ) |>
+  cols_merge(
+    columns = c(Total, pct_total),
+    pattern = "{1} ({2})"
+  ) |>
+  grand_summary_rows(
+    columns = c("Adimplente", "Inadimplente", "Total"),
+    fns = list(Total = ~ sum(., na.rm = TRUE)),
+    fmt = ~ fmt_integer(., sep_mark = ".")
+  ) |>
+  tab_source_note(
+    source_note = md("**Fonte**: base de dados.")
+  ) |>
+  cols_align(align = "right", columns = everything()) |>
+  cols_align(align = "left", columns = person_home_ownership) |>
+  tab_style(
+    style = cell_text(align = "left"),
+    locations = cells_stubhead()
+  ) |>
+  tab_style(
+    style = cell_text(align = "left"),
+    locations = list(cells_source_notes(), cells_footnotes())
+  ) |>
+  # Garante números tabulares (mesma largura para todos os dígitos de 0 a 9)
+  tab_options(
+    table.width = "100%",
+    column_labels.font.weight = "bold",
+    column_labels.padding = "10px",
+    source_notes.font.size = px(12),
+    footnotes.font.size = px(12),
+  ) |>
+  opt_css(
+    css = "
+      .gt_table td, .gt_table th {
+        font-variant-numeric: tabular-nums;
+      }
+    "
+  )
 ```
 
 
 
 ### Finalidade do empréstimo
 
-Em termos de destinação dos recursos, segundo a @fig-hbar-loan-intent, o top 3 é composto por investimentos em
-educação seguido por despesas médicas e empreendimento.
+Em termos de destinação dos recursos, de acordo com a @fig-hbar-loan-intent,
+as finalidades com maior proporção de inadimplentes são consolidação de dívidas,
+saúde e reforma imobiliária.
+Em contrapartida, empréstimos destinados à educação, empreendimento e uso
+pessoal registram índices menores.
 
 ```{r}
 #| out-width: 100%
 #| label: fig-hbar-loan-intent
 #| fig-cap: Distribuição da finalidade do empréstimo
 
-ggplot(credit_risk_clean, aes(y = fct_rev(fct_infreq(loan_intent)), fill = loan_status)) +
-  geom_bar(position = "dodge", width = 0.7) +
+ggplot(credit_risk_clean, aes(
+  y = fct_rev(fct_infreq(loan_intent)),
+  fill = loan_status
+)) +
+  geom_bar(
+    aes(x = after_stat(count / tapply(count, y, sum)[y])),
+    position = position_dodge(width = 0.7, reverse = TRUE),
+    width = 0.7
+  ) +
+  scale_fill_manual(values = c("Adimplente" = "#2b8cbe", "Inadimplente" = "#e34a33")) +
   theme_minimal(base_size = 11) +
   theme(
     panel.grid.major.y = element_blank(),
     panel.grid.minor = element_blank()
   ) +
+  geom_text(
+    aes(
+      x = after_stat(count / tapply(count, y, sum)[y]),
+      label = scales::percent(after_stat(count / tapply(count, y, sum)[y]), accuracy = 0.1)
+    ),
+    stat = "count",
+    position = position_dodge(width = 0.7, reverse = TRUE),
+    hjust = -0.15,
+    size = 3.5
+  ) +
+  scale_x_continuous(
+    labels = scales::percent_format(accuracy = 1),
+    limits = c(0, 1.05), # Vai até 100% com margem para o texto
+    breaks = seq(0, 1, 0.25)
+  ) +
   labs(
-    x = "Quantidade de empréstimos",
+    title = "Situação dos empréstimos por finalidade",
+    subtitle = "Proporção percentual dentro de cada categoria",
+    x = NULL, # Como o subtítulo já explica e há rótulos nas barras, o título do eixo X fica opcional
     y = "Finalidade",
-    fill = "Situação dos empréstimos"
+    fill = "Situação"
   )
 ```
 
-Conforme descrito pela @tbl-dblentry-loan-intent, o número de inadimplentes é
-maior em empréstimos tomados com a finalidade de quitação de dívidas, reforma
-imobiliária e despesas médicas.
+Conforme demonstrado pela @tbl-dblentry-loan-intent, a concentração
+de inadimplentes é mais elevada e equilibrada entre empréstimos
+destinados à saúde e à consolidação de dívidas, ao passo que as
+demais finalidades (educação, uso pessoal, reforma imobiliária e
+empreendimento) apresentam participações menores e relativamente
+homogêneas entre si.
 
 ```{r}
 #| label: tbl-dblentry-loan-intent
 #| tbl-cap: Distribuição conjunta das frequências da situação de empréstimo conforme a finalidade
 
+# 1. Calcula as proporções em relação ao total de cada coluna
 tbl_contigency <- credit_risk_clean |>
-    tabyl(loan_intent, loan_status) |>
-    adorn_totals("col", name = "Total")
+  tabyl(loan_intent, loan_status) |>
+  adorn_totals("col", name = "Total") |>
+  mutate(
+    pct_adimp = Adimplente / sum(Adimplente),
+    pct_inadimp = Inadimplente / sum(Inadimplente),
+    pct_total = Total / sum(Total)
+  )
 
+# 2. Constrói a tabela gt
 tbl_contigency |>
-    gt(rowname_col = "loan_intent") |>
-    tab_stubhead("Finalidade") |>
-    tab_spanner(
-        columns = c("Adimplente", "Inadimplente", "Total"),
-        label = "Situação do empréstimo"
-    ) |>
-    tab_source_note(
-        source_note = md("**Fonte**: base de dados.")
-    ) |>
-    cols_align(align = "right", columns = everything()) |>
-    cols_align(align = "left", columns = loan_intent) |>
-    tab_style(
-        style = cell_text(align = "left"),
-        locations = cells_stubhead()
-    ) |>
-    tab_style(
-        style = cell_text(align = "left"),
-        locations = list(cells_source_notes(), cells_footnotes())
-    ) |>
-    tab_options(
-        table.width = "100%",
-        column_labels.font.weight = "bold",
-        column_labels.padding = "10px",
-        source_notes.font.size = px(12),
-        footnotes.font.size = px(12)
-    ) |>
-    fmt_integer(
-        columns = c("Adimplente", "Inadimplente", "Total"),
-        sep_mark = "."
-    ) |>
-    grand_summary_rows(
-        columns = -loan_intent,
-        fns = list(Total = ~ sum(., na.rm = TRUE)),
-        fmt = ~ fmt_integer(., sep_mark = ".")
-    )
+  gt(rowname_col = "loan_intent") |>
+  tab_stubhead("Finalidade") |>
+  tab_spanner(
+    columns = c("Adimplente", "Inadimplente", "Total"),
+    label = "Situação do empréstimo"
+  ) |>
+  fmt_integer(
+    columns = c("Adimplente", "Inadimplente", "Total"),
+    sep_mark = "."
+  ) |>
+  # Formata as porcentagens com zero à esquerda (ex: 09,1% e 00,3%)
+  fmt(
+    columns = starts_with("pct_"),
+    fns = function(x) {
+      gsub("\\.", ",", sprintf("%04.1f%%", x * 100))
+    }
+  ) |>
+  cols_merge(
+    columns = c(Adimplente, pct_adimp),
+    pattern = "{1} ({2})"
+  ) |>
+  cols_merge(
+    columns = c(Inadimplente, pct_inadimp),
+    pattern = "{1} ({2})"
+  ) |>
+  cols_merge(
+    columns = c(Total, pct_total),
+    pattern = "{1} ({2})"
+  ) |>
+  grand_summary_rows(
+    columns = c("Adimplente", "Inadimplente", "Total"),
+    fns = list(Total = ~ sum(., na.rm = TRUE)),
+    fmt = ~ fmt_integer(., sep_mark = ".")
+  ) |>
+  tab_source_note(
+    source_note = md("**Fonte**: base de dados.")
+  ) |>
+  cols_align(align = "right", columns = everything()) |>
+  cols_align(align = "left", columns = loan_intent) |>
+  tab_style(
+    style = cell_text(align = "left"),
+    locations = cells_stubhead()
+  ) |>
+  tab_style(
+    style = cell_text(align = "left"),
+    locations = list(cells_source_notes(), cells_footnotes())
+  ) |>
+  # Garante números tabulares (mesma largura para todos os dígitos de 0 a 9)
+  tab_options(
+    table.width = "100%",
+    column_labels.font.weight = "bold",
+    column_labels.padding = "10px",
+    source_notes.font.size = px(12),
+    footnotes.font.size = px(12),
+  ) |>
+  opt_css(
+    css = "
+      .gt_table td, .gt_table th {
+        font-variant-numeric: tabular-nums;
+      }
+    "
+  )
 ```
 
 ### Risco de inadimplência
 
 A distribuição das contratações de empréstimos por grau de risco (@fig-hbar-loan-grade)
-evidencia um comportamento esperado no mercado de crédito: o volume de operações
-concedidas decresce monotonicamente à medida que o risco de inadimplência
-atribuído ao tomador se eleva.
+evidencia um comportamento esperado no mercado de crédito: a incidência de
+inadimplência cresce à medida que a categoria de risco se eleva.
+
+Outro comportamento intrigante apresentado no gráfico é a inversão da classe
+predominante da situação de empréstimo a partir de determinada categoria de
+risco de inadimplência. Podemos observar que as classes A, B e C são compostas
+majoritariamente por tomadores adimplentes. Por outro lado, a partir da classe D
+esta situação se inverte, e a taxa de inadimplentes quase triplica em relação à
+categoria anterior (C). As categorias subsequentes de maior risco passam a
+ser compostas majoritariamente por inadimplentes. 
 
 ```{r}
 #| out-width: 100%
 #| label: fig-hbar-loan-grade
 #| fig-cap: Distribuição da classificação de risco
 
-ggplot(credit_risk_clean, aes(y = fct_rev(fct_infreq(loan_grade)), fill = loan_status)) +
-  geom_bar(position = "dodge", width = 0.7) +
+ggplot(credit_risk_clean, aes(
+  y = fct_rev(fct_infreq(loan_grade)),
+  fill = loan_status
+)) +
+  geom_bar(
+    aes(x = after_stat(count / tapply(count, y, sum)[y])),
+    position = position_dodge(width = 0.7, reverse = TRUE),
+    width = 0.7
+  ) +
+  scale_fill_manual(values = c("Adimplente" = "#2b8cbe", "Inadimplente" = "#e34a33")) +
   theme_minimal(base_size = 11) +
   theme(
     panel.grid.major.y = element_blank(),
     panel.grid.minor = element_blank()
   ) +
+  geom_text(
+    aes(
+      x = after_stat(count / tapply(count, y, sum)[y]),
+      label = scales::percent(after_stat(count / tapply(count, y, sum)[y]), accuracy = 0.1)
+    ),
+    stat = "count",
+    position = position_dodge(width = 0.7, reverse = TRUE),
+    hjust = -0.15,
+    size = 3.5
+  ) +
+  scale_x_continuous(
+    labels = scales::percent_format(accuracy = 1),
+    limits = c(0, 1.05), # Vai até 100% com margem para o texto
+    breaks = seq(0, 1, 0.25)
+  ) +
   labs(
-    x = "Quantidade de empréstimos",
+    title = "Situação dos empréstimos por risco de inadimplência",
+    subtitle = "Proporção percentual dentro de cada categoria",
+    x = NULL, # Como o subtítulo já explica e há rótulos nas barras, o título do eixo X fica opcional
     y = "Risco",
-    fill = "Situação dos empréstimos"
+    fill = "Situação"
   )
 ```
 
-Outro comportamento intrigante apresentado no gráfico é a inversão da classe
-predominante da situação de empréstimo a partir de determinada categoria de
-risco de inadimplência. Podemos observar que as classes A, B e C são compostas
-majoritariamente por tomadores adimplentes. Enquanto que a partir da classe D
-esta situação se inverte e as categorias subsequentes de maior risco passam a
-ser compostas cada vez mais exclusivamente por inadimplentes. 
-
 Como esperado para uma régua de classificação de crédito, observa-se na
-@tbl-dblentry-loan-grade uma relação direta entre o grau de risco e a taxa de
-inadimplência. Esse padrão confirma a elevada capacidade discriminatória da
-variável para a modelagem do risco de crédito.
+@tbl-dblentry-loan-grade uma influência direta entre o grau de risco e a concessão de crédito.
+Conforme explicitado na coluna do Total, o número de empréstimos concedidos vai decaindo
+à medida que o grau de risco vai aumentando. Consequentemente, a maior parte das
+observações inadimplentes está situada entre as classes de baixo a moderado risco (A-D),
+devido ao maior volume de empréstimos aprovados nessas categorias em comparação às faixas de risco mais elevado.
 
 ```{r}
 #| label: tbl-dblentry-loan-grade
 #| tbl-cap: Distribuição conjunta das frequências da situação de empréstimo conforme a classificação de risco
 
+# 1. Calcula as proporções em relação ao total de cada coluna
 tbl_contigency <- credit_risk_clean |>
-    tabyl(loan_grade, loan_status) |>
-    adorn_totals("col", name = "Total")
+  tabyl(loan_grade, loan_status) |>
+  adorn_totals("col", name = "Total") |>
+  mutate(
+    pct_adimp = Adimplente / sum(Adimplente),
+    pct_inadimp = Inadimplente / sum(Inadimplente),
+    pct_total = Total / sum(Total)
+  )
 
+# 2. Constrói a tabela gt
 tbl_contigency |>
-    gt(rowname_col = "loan_grade") |>
-    tab_stubhead("Risco") |>
-    tab_spanner(
-        columns = c("Adimplente", "Inadimplente", "Total"),
-        label = "Situação do empréstimo"
-    ) |>
-    tab_source_note(
-        source_note = md("**Fonte**: base de dados.")
-    ) |>
-    cols_align(align = "right", columns = everything()) |>
-    cols_align(align = "left", columns = loan_grade) |>
-    tab_style(
-        style = cell_text(align = "left"),
-        locations = cells_stubhead()
-    ) |>
-    tab_style(
-        style = cell_text(align = "left"),
-        locations = list(cells_source_notes(), cells_footnotes())
-    ) |>
-    tab_options(
-        table.width = "100%",
-        column_labels.font.weight = "bold",
-        column_labels.padding = "10px",
-        source_notes.font.size = px(12),
-        footnotes.font.size = px(12)
-    ) |>
-    fmt_integer(
-        columns = c("Adimplente", "Inadimplente", "Total"),
-        sep_mark = "."
-    ) |>
-    grand_summary_rows(
-        columns = -loan_grade,
-        fns = list(Total = ~ sum(., na.rm = TRUE)),
-        fmt = ~ fmt_integer(., sep_mark = ".")
-    )
+  gt(rowname_col = "loan_grade") |>
+  tab_stubhead("Risco") |>
+  tab_spanner(
+    columns = c("Adimplente", "Inadimplente", "Total"),
+    label = "Situação do empréstimo"
+  ) |>
+  fmt_integer(
+    columns = c("Adimplente", "Inadimplente", "Total"),
+    sep_mark = "."
+  ) |>
+  # Formata as porcentagens com zero à esquerda (ex: 09,1% e 00,3%)
+  fmt(
+    columns = starts_with("pct_"),
+    fns = function(x) {
+      gsub("\\.", ",", sprintf("%04.1f%%", x * 100))
+    }
+  ) |>
+  cols_merge(
+    columns = c(Adimplente, pct_adimp),
+    pattern = "{1} ({2})"
+  ) |>
+  cols_merge(
+    columns = c(Inadimplente, pct_inadimp),
+    pattern = "{1} ({2})"
+  ) |>
+  cols_merge(
+    columns = c(Total, pct_total),
+    pattern = "{1} ({2})"
+  ) |>
+  grand_summary_rows(
+    columns = c("Adimplente", "Inadimplente", "Total"),
+    fns = list(Total = ~ sum(., na.rm = TRUE)),
+    fmt = ~ fmt_integer(., sep_mark = ".")
+  ) |>
+  tab_footnote(
+    footnote = md("**Nota:** percentual passível de erros de arredondamento."),
+    locations = cells_body(columns = Adimplente, rows = dim(tbl_contigency)[1])
+  ) |>
+  tab_source_note(
+    source_note = md("**Fonte**: base de dados.")
+  ) |>
+  cols_align(align = "right", columns = everything()) |>
+  cols_align(align = "left", columns = loan_grade) |>
+  tab_style(
+    style = cell_text(align = "left"),
+    locations = cells_stubhead()
+  ) |>
+  tab_style(
+    style = cell_text(align = "left"),
+    locations = list(cells_source_notes(), cells_footnotes())
+  ) |>
+  # Garante números tabulares (mesma largura para todos os dígitos de 0 a 9)
+  tab_options(
+    table.width = "100%",
+    column_labels.font.weight = "bold",
+    column_labels.padding = "10px",
+    source_notes.font.size = px(12),
+    footnotes.font.size = px(12),
+  ) |>
+  opt_css(
+    css = "
+      .gt_table td, .gt_table th {
+        font-variant-numeric: tabular-nums;
+      }
+    "
+  )
 ```
 
 
@@ -1490,75 +1724,191 @@ da amostra (classes F e G) serão agrupadas em uma categoria comum.
 
 ### Registro de inadimplência anterior
 
+A @fig-hbar-cb-person-default-on-file ilustra que conceder crédito
+a pessoas que já possuem histórico de inadimplência está associado
+a um risco significativamente maior de recorrência: a proporção de
+inadimplentes nesse grupo (37,7%) é pouco mais que o dobro da
+observada entre tomadores sem registro anterior (18,3%).
+
+```{r}
+#| out-width: 100%
+#| label: fig-hbar-cb-person-default-on-file
+#| fig-cap: Distribuição do registro de inadimplência anterior
+
+ggplot(credit_risk_clean, aes(
+  y = fct_rev(fct_infreq(cb_person_default_on_file)),
+  fill = loan_status
+)) +
+  geom_bar(
+    aes(x = after_stat(count / tapply(count, y, sum)[y])),
+    position = position_dodge(width = 0.7, reverse = TRUE),
+    width = 0.7
+  ) +
+  scale_fill_manual(values = c("Adimplente" = "#2b8cbe", "Inadimplente" = "#e34a33")) +
+  theme_minimal(base_size = 11) +
+  theme(
+    panel.grid.major.y = element_blank(),
+    panel.grid.minor = element_blank()
+  ) +
+  geom_text(
+    aes(
+      x = after_stat(count / tapply(count, y, sum)[y]),
+      label = scales::percent(after_stat(count / tapply(count, y, sum)[y]), accuracy = 0.1)
+    ),
+    stat = "count",
+    position = position_dodge(width = 0.7, reverse = TRUE),
+    hjust = -0.15,
+    size = 3.5
+  ) +
+  scale_x_continuous(
+    labels = scales::percent_format(accuracy = 1),
+    limits = c(0, 1.05), # Vai até 100% com margem para o texto
+    breaks = seq(0, 1, 0.25)
+  ) +
+  labs(
+    title = "Situação dos empréstimos por registro de inadimplência anterior",
+    subtitle = "Proporção percentual dentro de cada categoria",
+    x = NULL, # Como o subtítulo já explica e há rótulos nas barras, o título do eixo X fica opcional
+    y = "Registro de inadimplência",
+    fill = "Situação"
+  )
+```
+
+Naturalmente, cabe destacar que são aplicadas taxas de juros mais elevadas
+(@fig-boxplot-loan-int-rate-vs-cb-person-default-on-file) para indivíduos que
+possuem registro de inadimplência anterior, refletindo a precificação do maior
+risco de recorrência. Ressalta-se também que o grupo sem registro prévio
+apresenta uma dispersão maior, evidenciando que tomadores sem histórico de
+inadimplência têm acesso a um leque mais amplo de taxas.
+
+```{r}
+#| out-width: 100%
+#| label: fig-boxplot-loan-int-rate-vs-cb-person-default-on-file
+#| fig-cap: Distribuição das taxas de juros por registro de inadimplência anterior
+
+credit_risk_clean |>
+    na.omit() |>
+    ggplot(aes(x = cb_person_default_on_file, y = loan_int_rate)) +
+    geom_boxplot(
+        outlier.color = "red",
+        outlier.size = 1,
+        width = 0.5,
+        show.legend = FALSE,
+        fill = "deepskyblue"
+    ) +
+    scale_y_continuous(labels = scales::percent_format(scale = 1)) +
+    labs(
+        x = "Registro de inadimplência anterior",
+        y = "Taxa de juros"
+    ) +
+    theme_minimal(base_size = 11)
+```
+
 ```{r}
 #| label: cb-person-default-on-file
 
-count_cb_person_default_on_file <- credit_risk_clean |>
-    count(cb_person_default_on_file) |>
-    mutate(perc = n * 100 / sum(n))
+tbl_contigency <- credit_risk_clean |>
+  tabyl(cb_person_default_on_file, loan_status) |>
+  adorn_totals("col", name = "Total") |>
+  mutate(
+    pct_adimp = Adimplente / sum(Adimplente),
+    pct_inadimp = Inadimplente / sum(Inadimplente),
+    pct_total = Total / sum(Total)
+  )
 
-count_cb_person_default_on_file_yes <- count_cb_person_default_on_file |>
-    filter(cb_person_default_on_file == "Sim")
+# Extraindo os valores já formatados diretamente da tabela de contingência
+reg_sim <- tbl_contigency |> filter(cb_person_default_on_file == "Sim")
+reg_nao <- tbl_contigency |> filter(cb_person_default_on_file == "Não")
 
-count_cb_person_default_on_file_no <- count_cb_person_default_on_file |>
-    filter(cb_person_default_on_file == "Não")
+n_sim <- scales::number(reg_sim$Total, big.mark = ".", decimal.mark = ",")
+n_nao <- scales::number(reg_nao$Total, big.mark = ".", decimal.mark = ",")
+
+pct_total_sim <- scales::percent(reg_sim$pct_total, accuracy = 0.01, decimal.mark = ",")
+pct_total_nao <- scales::percent(reg_nao$pct_total, accuracy = 0.01, decimal.mark = ",")
+
+pct_inadim_sim <- scales::percent(reg_sim$pct_inadimp, accuracy = 0.01, decimal.mark = ",")
+pct_inadim_nao <- scales::percent(reg_nao$pct_inadimp, accuracy = 0.01, decimal.mark = ",")
 ```
 
-A @tbl-dblentry-cb-person-default-on-file demonstra que a proporção de
-inadimplentes no grupo dos que já foram inadimplentes no passado é basicamente o
-dobro do grupo dos que nunca ficaram devendo.
+A @tbl-dblentry-cb-person-default-on-file evidencia que `r n_sim` (`r pct_total_sim`)
+dos empréstimos foram concedidos a pessoas que já possuíam registro de inadimplência
+em seus históricos, enquanto `r n_nao` (`r pct_total_nao`) destinaram-se a tomadores
+sem ocorrências anteriores.
+
+Nota-se ainda que, embora o grupo sem histórico prévio concentre a maior parcela do
+volume absoluto de inadimplentes (`r pct_inadim_nao`) devido ao seu tamanho na
+carteira, os clientes com registro anterior representam `r pct_inadim_sim` dos casos
+de inadimplência, quase o dobro da sua participação na base total (`r pct_total_sim`).
 
 ```{r}
 #| label: tbl-dblentry-cb-person-default-on-file
 #| tbl-cap: Distribuição conjunta das frequências da situação de empréstimo conforme o registro de inadimplência anterior
 
-tbl_contigency <- credit_risk_clean |>
-    mutate(cb_person_default_on_file = fct_rev(cb_person_default_on_file)) |>
-    tabyl(cb_person_default_on_file, loan_status) |>
-    adorn_totals("col", name = "Total")
-
+# 2. Constrói a tabela gt
 tbl_contigency |>
-    gt(rowname_col = "cb_person_default_on_file") |>
-    tab_stubhead("Registro") |>
-    tab_spanner(
-        columns = c("Adimplente", "Inadimplente", "Total"),
-        label = "Situação do empréstimo"
-    ) |>
-    tab_source_note(
-        source_note = md("**Fonte**: base de dados.")
-    ) |>
-    cols_align(align = "right", columns = everything()) |>
-    cols_align(align = "left", columns = cb_person_default_on_file) |>
-    tab_style(
-        style = cell_text(align = "left"),
-        locations = cells_stubhead()
-    ) |>
-    tab_style(
-        style = cell_text(align = "left"),
-        locations = list(cells_source_notes(), cells_footnotes())
-    ) |>
-    tab_options(
-        table.width = "100%",
-        column_labels.font.weight = "bold",
-        column_labels.padding = "10px",
-        source_notes.font.size = px(12),
-        footnotes.font.size = px(12)
-    ) |>
-    fmt_integer(
-        columns = c("Adimplente", "Inadimplente", "Total"),
-        sep_mark = "."
-    ) |>
-    grand_summary_rows(
-        columns = -cb_person_default_on_file,
-        fns = list(Total = ~ sum(., na.rm = TRUE)),
-        fmt = ~ fmt_integer(., sep_mark = ".")
-    )
+  gt(rowname_col = "cb_person_default_on_file") |>
+  tab_stubhead("Registro") |>
+  tab_spanner(
+    columns = c("Adimplente", "Inadimplente", "Total"),
+    label = "Situação do empréstimo"
+  ) |>
+  fmt_integer(
+    columns = c("Adimplente", "Inadimplente", "Total"),
+    sep_mark = "."
+  ) |>
+  # Formata as porcentagens com zero à esquerda (ex: 09,1% e 00,3%)
+  fmt(
+    columns = starts_with("pct_"),
+    fns = function(x) {
+      gsub("\\.", ",", sprintf("%04.2f%%", x * 100))
+    }
+  ) |>
+  cols_merge(
+    columns = c(Adimplente, pct_adimp),
+    pattern = "{1} ({2})"
+  ) |>
+  cols_merge(
+    columns = c(Inadimplente, pct_inadimp),
+    pattern = "{1} ({2})"
+  ) |>
+  cols_merge(
+    columns = c(Total, pct_total),
+    pattern = "{1} ({2})"
+  ) |>
+  grand_summary_rows(
+    columns = c("Adimplente", "Inadimplente", "Total"),
+    fns = list(Total = ~ sum(., na.rm = TRUE)),
+    fmt = ~ fmt_integer(., sep_mark = ".")
+  ) |>
+  tab_source_note(
+    source_note = md("**Fonte**: base de dados.")
+  ) |>
+  cols_align(align = "right", columns = everything()) |>
+  cols_align(align = "left", columns = cb_person_default_on_file) |>
+  tab_style(
+    style = cell_text(align = "left"),
+    locations = cells_stubhead()
+  ) |>
+  tab_style(
+    style = cell_text(align = "left"),
+    locations = list(cells_source_notes(), cells_footnotes())
+  ) |>
+  # Garante números tabulares (mesma largura para todos os dígitos de 0 a 9)
+  tab_options(
+    table.width = "100%",
+    column_labels.font.weight = "bold",
+    column_labels.padding = "10px",
+    source_notes.font.size = px(12),
+    footnotes.font.size = px(12),
+  ) |>
+  opt_css(
+    css = "
+      .gt_table td, .gt_table th {
+        font-variant-numeric: tabular-nums;
+      }
+    "
+  )
 ```
-
-Cerca de `r format(count_cb_person_default_on_file_yes$n, big.mark = ".")` (`r format(round(count_cb_person_default_on_file_yes$perc, 2), decimal.mark = ",")`%) dos empréstimos
-foram concedidos a pessoas que já possuíam registro de inadimplência em seus históricos, enquanto que
-`r format(count_cb_person_default_on_file_no$n, big.mark = ".")` (`r format(round(count_cb_person_default_on_file_no$perc, 2), decimal.mark = ",")`%) dos empréstimos foram concedidos
-a pessoas que sempre pagam em dia.
 
 
 ### Situação do empréstimo
