@@ -8,7 +8,7 @@ subtitle: "TCC 01"
 lang: "pt-br"
 execute:
     echo: false
-    cache: true
+    cache: false
 toc: false
 number-sections: false
 toc-depth: 2
@@ -2083,13 +2083,17 @@ em comparação às categorias mais arriscadas.
 # Modelagem
 
 Nesta seção, aborda-se o ajuste e a avaliação de três Modelos Lineares Generalizados (GLM)
-para classificação binária, utilizando as seguintes funções de ligação: logística, probit
-e complemento log-log. O objetivo é selecionar o modelo mais adequado para estimar a
-probabilidade de inadimplência dos tomadores de empréstimo. Para isso, a base de dados
-foi dividida aleatoriamente em conjuntos de treino (70%) e teste (30%), com amostragem
+para classificação binária da variável de interesse (situação do empréstimo), utilizando
+as seguintes funções de ligação: logística, probit e complemento log-log.
+O objetivo é selecionar o modelo mais adequado para estimar a probabilidade
+de inadimplência dos tomadores de empréstimo.
+
+Para isso, a base de dados foi dividida aleatoriamente em conjuntos de treino (70%) e teste (30%), com amostragem
 estratificada pela variável resposta para preservar a proporção de inadimplentes.
 A comparação dos modelos em termos de capacidade discriminatória e calibração foi
-conduzida no conjunto de treino por meio de validação cruzada em 10 partes com 5 repetições (repeated 10-fold cross-validation).
+conduzida por meio de validação cruzada em 10 partes com 5 repetições (repeated 10-fold cross-validation).
+O modelo é escolhido de acordo com o desempenho das médias das métricas obtidas para os
+**conjuntos de validação.**
 
 ```{r}
 #| label: training-definitions
@@ -2106,7 +2110,14 @@ set.seed(2026)
 folds <- vfold_cv(train_data, v = 10, repeats = 5, strata = loan_status)
 
 # Metrics used throughout.
-risk_metrics <- metric_set(roc_auc, brier_class, mn_log_loss)
+risk_metrics <- metric_set(
+  roc_auc,
+  brier_class,
+  mn_log_loss,
+  bal_accuracy, # Acurácia balanceada
+  recall,       # Recall (Sensibilidade)
+  precision     # Precisão
+)
 ```
 
 
@@ -2119,7 +2130,8 @@ situação do empréstimo, que indica se os empréstimos contraídos foram quita
 pelos tomadores, é de aproximadamente 22% de inadimplentes para 78% de
 adimplentes. Ao final da análise, constatamos que o tamanho da amostra
 remanescente após o tratamento dos dados foi de `r format(nrow(credit_risk_clean), big.mark = ".")`
-observações.
+observações. Ressaltamos que será utilizado o logaritmo natural da variável da renda pessoal.
+
 
 Um tamanho amostral amplo como este viabiliza a inclusão de todas as
 `r dim(credit_risk_clean)[2] - 1` variáveis preditoras num modelo base.
@@ -2288,6 +2300,9 @@ bind_rows(
             "brier_class" ~ "Escore de Brier",
             "mn_log_loss" ~ "Log-Loss",
             "roc_auc" ~ "AUC-ROC",
+            "bal_accuracy" ~ "Acurácia balanceada",
+            "recall" ~ "Sensibilidade",
+            "precision" ~ "Precisão",
             default = .metric
         )
     ) |>
@@ -2295,8 +2310,8 @@ bind_rows(
     gt(groupname_col = "model") |>
     cols_label(
         .metric = "Métrica",
-        mean = "Média",
-        std_err = "Erro padrão"
+        mean = "Média (Validação)",
+        std_err = "Erro padrão (Validação)"
     ) |>
     tab_source_note(
         source_note = md("**Fonte**: Elaboração própria.")
@@ -2328,7 +2343,7 @@ bind_rows(
 ```
 
 
-As 3 métricas da @tbl-variable-selection indicam que o modelo sem a variável
+As 6 métricas da @tbl-variable-selection indicam que o modelo sem a variável
 taxa de juros, mantendo o risco de inadimplência, apresenta um desempenho
 superior. Portanto, a variável taxa de juros será removida do conjunto de
 preditores. Com a remoção da variável, verifica-se novamente o fator de inflação
@@ -2404,9 +2419,17 @@ há mais problemas de multicolinearidade entre os preditores.
 
 Com as variáveis preditoras definidas, utilizaremos a validação cruzada para
 comparar o desempenho de três modelos lineares generalizados com diferentes
-funções de ligação: logit, probit e complemento log-log. Elegeremos o melhor
-modelo com base nas métricas de desempenho da validação cruzada: Escore de
-Brier, Log-Loss e AUC-ROC.
+funções de ligação: logit, probit e complemento log-log. O melhor modelo
+será selecionado com base nas seguintes métricas avaliadas na validação cruzada:
+
+- **AUC-ROC:** avalia a capacidade global de discriminação entre as classes (quanto maior, melhor);
+- **Log-Loss:** penaliza previsões probabilísticas confiantes e incorretas (quanto menor, melhor);
+- **Escore de Brier:** mede o erro quadrático médio das probabilidades previstas, avaliando a calibração (quanto menor, melhor);
+- **Acurácia balanceada:** média entre sensibilidade e especificidade, adequada ao desbalanceamento da base (quanto maior, melhor);
+- **Sensibilidade (*Recall*):** proporção de inadimplentes corretamente identificados (quanto maior, melhor);
+- **Precisão:** proporção de previsões de inadimplência que se confirmam (quanto maior, melhor).
+
+A escolha é feita observando os resultados da coluna da média (validação).
 
 ```{r}
 #| label: cv-logit-model
@@ -2523,8 +2546,8 @@ cloglog_fit_rs_metrics <-
 cloglog_fit_rs_preds <-
     collect_predictions(cloglog_fit_rs) |>
     mutate(model = "Regressão Complemento Log-Log")
-```
 
+```
 
 A @tbl-cv-metrics apresenta as métricas de desempenho da validação
 cruzada.
@@ -2532,63 +2555,134 @@ cruzada.
 ```{r}
 #| label: tbl-cv-metrics
 #| tbl-cap: Métricas da validação cruzada para os modelos logístico, probit e complemento log-log
+#| warning: false
 
+# 1. Função auxiliar para calcular as métricas nas 9 partes de treino (analysis set)
+calc_train_cv_metrics <- function(wf, folds, model_name) {
+  # Identifica o nome da coluna da classe positiva (2º nível do fator)
+  pos_class <- levels(train_data$loan_status)[2]
+  prob_col <- paste0(".pred_", pos_class)
 
-bind_rows(
-    logit_fit_rs_metrics |> mutate(model = "Modelo Logístico"),
-    probit_fit_rs_metrics |> mutate(model = "Modelo Probit"),
-    cloglog_fit_rs_metrics |> mutate(model = "Modelo Complemento Log-Log"),
-) |>
-    mutate(
-        .metric = recode_values(
-            .metric,
-            "brier_class" ~ "Escore de Brier",
-            "mn_log_loss" ~ "Log-Loss",
-            "roc_auc" ~ "AUC-ROC",
-            default = .metric
-        )
-    ) |>
-    select(model, .metric, mean, std_err) |>
-    gt(groupname_col = "model") |>
-    cols_label(
-        .metric = "Métrica",
-        mean = "Média",
-        std_err = "Erro padrão"
-    ) |>
-    tab_source_note(
-        source_note = md("**Fonte**: Elaboração própria.")
-    ) |>
-    cols_align(align = "right", columns = everything()) |>
-    cols_align(align = "left", columns = model) |>
-    cols_align(align = "center", columns = .metric) |>
-    tab_style(
-        style = cell_text(align = "left"),
-        locations = cells_stubhead()
-    ) |>
-    tab_style(
-        style = cell_text(align = "left"),
-        locations = list(cells_source_notes(), cells_footnotes())
-    ) |>
-    tab_options(
-        table.width = "100%",
-        column_labels.font.weight = "bold",
-        column_labels.padding = "10px",
-        source_notes.font.size = px(12),
-        footnotes.font.size = px(12),
-    ) |>
-    fmt_number(
-        columns = c(mean, std_err),
-        decimals = 4,
-        dec_mark = ",",
-        sep_mark = "."
+  map_dfr(folds$splits, function(split) {
+    train_fold <- analysis(split)
+    fit_fold <- fit(wf, data = train_fold)
+
+    preds <- bind_cols(
+      train_fold |> select(loan_status),
+      predict(fit_fold, new_data = train_fold, type = "prob"),
+      predict(fit_fold, new_data = train_fold, type = "class")
     )
+
+    # Calcula exatamente o mesmo risk_metrics com event_level = "second"
+    risk_metrics(
+      preds,
+      truth = loan_status,
+      estimate = .pred_class,
+      !!sym(prob_col),
+      event_level = "second"
+    )
+  }) |>
+    group_by(.metric) |>
+    summarise(
+      mean_train = mean(.estimate),
+      std_err_train = sd(.estimate) / sqrt(n()),
+      .groups = "drop"
+    ) |>
+    mutate(model = model_name)
+}
+
+# 2. Calcula as métricas de treino (9 partes) para cada um dos 3 modelos
+logit_train_metrics <- calc_train_cv_metrics(logit_wf, folds, "Modelo Logístico")
+probit_train_metrics <- calc_train_cv_metrics(probit_wf, folds, "Modelo Probit")
+cloglog_train_metrics <- calc_train_cv_metrics(cloglog_wf, folds, "Modelo Complemento Log-Log")
+
+train_cv_all <- bind_rows(
+  logit_train_metrics,
+  probit_train_metrics,
+  cloglog_train_metrics
+)
+
+# 3. Junta com as métricas de validação (10ª parte) e gera a tabela gt atualizada
+# --- tbl-cv-metrics ---
+bind_rows(
+  logit_fit_rs_metrics |> mutate(model = "Modelo Logístico"),
+  probit_fit_rs_metrics |> mutate(model = "Modelo Probit"),
+  cloglog_fit_rs_metrics |> mutate(model = "Modelo Complemento Log-Log")
+) |>
+  left_join(train_cv_all, by = c("model", ".metric")) |>
+  mutate(
+    .metric = recode_values(
+      .metric,
+      "brier_class" ~ "Escore de Brier",
+      "mn_log_loss" ~ "Log-Loss",
+      "roc_auc" ~ "AUC-ROC",
+      "bal_accuracy" ~ "Acurácia balanceada",
+      "recall" ~ "Sensibilidade",
+      "precision" ~ "Precisão",
+      default = .metric
+    )
+  ) |>
+  select(model, .metric, mean_train, mean, std_err) |>
+  gt(groupname_col = "model") |>
+  cols_label(
+    .metric = "Métrica",
+    mean_train = "Média (Análise)",
+    mean = "Média (Validação)",
+    std_err = "Erro padrão (Validação)"
+  ) |>
+  tab_source_note(
+    source_note = md("**Fonte**: Elaboração própria.")
+  ) |>
+  cols_align(align = "right", columns = everything()) |>
+  cols_align(align = "left", columns = model) |>
+  cols_align(align = "center", columns = .metric) |>
+  tab_style(
+    style = cell_text(align = "left"),
+    locations = cells_stubhead()
+  ) |>
+  tab_style(
+    style = cell_text(align = "left"),
+    locations = list(cells_source_notes(), cells_footnotes())
+  ) |>
+  tab_options(
+    table.width = "100%",
+    column_labels.font.weight = "bold",
+    column_labels.padding = "10px",
+    source_notes.font.size = px(12),
+    footnotes.font.size = px(12)
+  ) |>
+  fmt_number(
+    columns = c(mean_train, mean, std_err),
+    decimals = 4,
+    dec_mark = ",",
+    sep_mark = "."
+  )
 ```
 
-O melhor modelo de acordo com cada métrica foi:
 
-- Escore de Brier: modelo complemento log-log,
-- Log-Loss: modelo complemento log-log,
-- AUC-ROC: modelo probit.
+Não há indícios de sobreajuste (overfitting), pois as métricas
+de análise e validação são muito próximas para os três modelos.
+Portanto, o melhor modelo de acordo com cada métrica foi:
+
+```{r}
+#| label: best-metrics
+
+bal_accuracy <- filter(logit_fit_rs_metrics, .metric == "bal_accuracy") %>% slice_max(mean) %>% pull(mean) %>% round(4)
+brier_score <- filter(cloglog_fit_rs_metrics, .metric == "brier_class") %>% slice_min(mean) %>% pull(mean) %>% round(4)
+log_loss <- filter(cloglog_fit_rs_metrics, .metric == "mn_log_loss") %>% slice_min(mean) %>% pull(mean) %>% round(4)
+precision <- filter(cloglog_fit_rs_metrics, .metric == "precision") %>% slice_max(mean) %>% pull(mean) %>% round(4)
+sensitivity <- filter(logit_fit_rs_metrics, .metric == "recall") %>% slice_max(mean) %>% pull(mean) %>% round(4)
+auc_roc <- filter(probit_fit_rs_metrics, .metric == "roc_auc") %>% slice_max(mean) %>% pull(mean) %>% round(4)
+
+```
+
+
+- **Acurácia balanceada:** modelo logístico (`r bal_accuracy`);
+- **Escore de Brier:** modelo complemento log-log (`r brier_score`);
+- **Log-Loss:** modelo complemento log-log (`r log_loss`);
+- **Precisão:** modelo complemento log-log (`r precision`);
+- **Sensibilidade:** modelo logístico (`r sensitivity`);
+- **AUC-ROC:** modelo probit (`r auc_roc`).
 
 Contudo, as discrepâncias empíricas entre os três modelos foram residuais
 (inferiores a 0,01 em todas as métricas), caracterizando uma equivalência prática de desempenho.
@@ -2680,7 +2774,7 @@ logit_fit_terms <- c(
 
 logit_last_fit |>
     extract_fit_parsnip() |>
-    tidy(exponentiate = TRUE, conf.int = TRUE) |>
+    tidy(exponentiate = FALSE, conf.int = TRUE) |>
     select(term, estimate, conf.low, conf.high, p.value) |>
     mutate(across(-c(term, p.value), \(x) round(x, 4))) |>
     mutate(p.value = label_scientific(digits = 4, decimal.mark = ",")(p.value)) |>
@@ -2692,6 +2786,10 @@ logit_last_fit |>
         conf.low = "Limite inferior",
         conf.high = "Limite superior",
         p.value = "P-valor"
+    ) |>
+    tab_footnote(
+        footnote = md("**Nota:** a variável de renda pessoal foi transformada para a escala logarítmica."),
+        locations = cells_stub(rows = "Renda pessoal")
     ) |>
     tab_source_note(
         source_note = md("**Fonte**: Elaboração própria.")
@@ -2711,7 +2809,7 @@ logit_last_fit |>
         column_labels.font.weight = "bold",
         column_labels.padding = "10px",
         source_notes.font.size = px(12),
-        footnotes.font.size = px(12),
+        footnotes.font.size = px(12)
     ) |>
     fmt_number(
         columns = c(estimate, conf.low, conf.high),
@@ -2721,12 +2819,145 @@ logit_last_fit |>
     )
 ```
 
-Em seguida, podemos avaliar o desempenho do modelo final no conjunto de teste,
+Pela @tbl-logit-last-fit, verifica-se que 4 variáveis preditoras não foram
+significativas para o modelo final. Estas são:
+
+- Idade ($\text{p-valor} \approx 0,22$);
+- Tempo no emprego atual ($\text{p-valor} \approx 0,45$);
+- Histórico de crédito ($\text{p-valor} \approx 0,63$);
+- Inadimplência anterior (Sim) ($\text{p-valor} \approx 0,63$).
+
+Apesar de não apresentarem significância estatística individual ao nível de 5%,
+optou-se por manter essas variáveis no modelo final por três razões principais:
+em primeiro lugar, a validação cruzada demonstrou que o modelo completo não sofre
+de sobreajuste (_overfitting_), indicando que a permanência desses termos não
+compromete a capacidade de generalização; em segundo lugar, tratam-se de
+atributos com reconhecida relevância teórica na análise de risco de crédito,
+atuando como variáveis de controle demográfico e de histórico para a estimação
+adequada dos demais efeitos; por fim, preservar a especificação previamente
+validada evita viés de seleção pós-estimação.
+
+Para facilitar a interpretação prática e discutir os efeitos das variáveis estatisticamente
+significativas, a @tbl-logit-last-fit-exponentiated apresenta as estimativas das razões de chances
+($e^{\hat{\beta}}$) e suas respectivas escalas de variação ou categorias de referência para todos os preditores do modelo ajustado.
+
+```{r}
+#| label: tbl-logit-last-fit-exponentiated
+#| tbl-cap: Estimativas das razões de chances ($e^{\hat{\beta}}$) dos preditores do modelo logístico
+
+# --- tbl-logit-last-fit-exponentiated ---
+logit_fit_scales <- c(
+  "person_age" = "1 ano",
+  "person_income" = "1 unidade (log)",
+  "person_emp_length" = "1 ano",
+  "loan_percent_income" = "0,01 (1 ponto percentual)",
+  "cb_person_cred_hist_length" = "1 ano",
+  "person_home_ownership_Financiada" = "Ref.: Alugada",
+  "person_home_ownership_Própria" = "Ref.: Alugada",
+  "person_home_ownership_other" = "Ref.: Alugada",
+  "loan_intent_Saúde" = "Ref.: Educação",
+  "loan_intent_Empreendimento" = "Ref.: Educação",
+  "loan_intent_Uso.pessoal" = "Ref.: Educação",
+  "loan_intent_Consolidação.de.dívidas" = "Ref.: Educação",
+  "loan_intent_Reforma.imobiliária" = "Ref.: Educação",
+  "loan_grade_B" = "Ref.: Risco A",
+  "loan_grade_C" = "Ref.: Risco A",
+  "loan_grade_D" = "Ref.: Risco A",
+  "loan_grade_E" = "Ref.: Risco A",
+  "loan_grade_other" = "Ref.: Risco A",
+  "cb_person_default_on_file_Sim" = "Ref.: Não"
+)
+
+logit_last_fit |>
+  extract_fit_parsnip() |>
+  tidy(exponentiate = TRUE) |>
+  slice(-1) |>
+  select(term, estimate) |>
+  mutate(
+    estimate = if_else(term == "loan_percent_income", estimate ^ 0.01, estimate),
+    inv_estimate = if_else(estimate < 1, 1 / estimate, NA_real_),
+    escala = logit_fit_scales[term],
+    term = logit_fit_terms[term]
+  ) |>
+  select(term, escala, estimate, inv_estimate) |>
+  gt(rowname_col = "term") |>
+  tab_stubhead("Termos") |>
+  cols_label(
+    escala = "Escala / Referência",
+    estimate = md("$e^{\\hat{\\beta}}$"),
+    inv_estimate = md("$1/e^{\\hat{\\beta}}$ para $0 < e^{\\hat{\\beta}} < 1$")
+  ) |>
+  tab_footnote(
+    footnote = md("**Nota:** a variável de renda pessoal foi transformada para a escala logarítmica."),
+    locations = cells_stub(rows = "Renda pessoal")
+  ) |>
+  tab_source_note(
+    source_note = md("**Fonte**: Elaboração própria.")
+  ) |>
+  cols_align(align = "right", columns = c(estimate, inv_estimate)) |>
+  cols_align(align = "left", columns = c(term, escala)) |>
+  tab_style(
+    style = cell_text(align = "left"),
+    locations = cells_stubhead()
+  ) |>
+  tab_style(
+    style = cell_text(align = "left"),
+    locations = list(cells_source_notes(), cells_footnotes())
+  ) |>
+  tab_options(
+    table.width = "100%",
+    column_labels.font.weight = "bold",
+    column_labels.padding = "10px",
+    source_notes.font.size = px(12),
+    footnotes.font.size = px(12)
+  ) |>
+  fmt_number(
+    columns = c(estimate, inv_estimate),
+    decimals = 4,
+    dec_mark = ",",
+    sep_mark = "."
+  ) |>
+  sub_missing(
+    columns = inv_estimate,
+    missing_text = "—"
+  )
+```
+
+De acordo com a @tbl-logit-last-fit-exponentiated, os principais preditores
+estatisticamente significativos que atuam no modelo como fatores de proteção
+de crédito (reduzem a chance de ocorrência de inadimplência) são os seguintes:
+
+- **Renda pessoal (escala logarítmica):** o aumento de uma unidade no logaritmo
+da renda reduz a chance de inadimplência em cerca de $3,15$ vezes;
+
+- **Moradia própria:** possuir o próprio imóvel reduz a chance de inadimplência
+em cerca de $12,50$ vezes em comparação aos que residem em imóveis alugados;
+
+- **Moradia financiada:** ter imóvel financiado reduz a chance de inadimplência
+em cerca de $2,19$ vezes em comparação aos que residem em imóveis alugados;
+
+- **Finalidade de empreendimento:** empréstimos voltados para empreendimentos
+reduzem a chance de inadimplência em cerca de $1,22$ vez em comparação a empréstimos destinados à educação.
+
+Já os principais fatores de risco significativos compreendem o maior comprometimento da renda,
+as finalidades de uso pessoal, saúde, consolidação de dívidas e reforma imobiliária
+(em comparação à finalidade de educação) e todas as classificações de risco acima do
+grau A (B, C, D, E e outros riscos de inadimplência). Entre esses fatores,
+destaca-se sobretudo a piora na classificação de risco com o grupo de outros riscos (graus F e G)
+elevando a chance de inadimplência em aproximadamente $55,32$ vezes em relação ao grau A.
+Em seguida o comprometimento da renda, em que cada ponto percentual adicional aumenta a chance de
+inadimplência em $8,38\%$.
+```
+
+```
+
+Podemos então avaliar o desempenho do modelo final no conjunto de teste,
 por meio da @tbl-logit-last-fit-metrics.
 
 ```{r}
 #| label: tbl-logit-last-fit-metrics
 #| tbl-cap: Métricas do modelo logístico final ajustado no conjunto de teste
+
 collect_metrics(logit_last_fit) |>
     mutate(
         .metric = recode_values(
@@ -2734,6 +2965,9 @@ collect_metrics(logit_last_fit) |>
             "brier_class" ~ "Escore de Brier",
             "mn_log_loss" ~ "Log-Loss",
             "roc_auc" ~ "AUC-ROC",
+            "bal_accuracy" ~ "Acurácia balanceada",
+            "recall" ~ "Sensibilidade",
+            "precision" ~ "Precisão",
             default = .metric
         )
     ) |>
