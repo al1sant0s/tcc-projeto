@@ -1,14 +1,14 @@
 ---
 # vim: shiftwidth=4 softtabstop=4 textwidth=80
 author: "Alisson Lucas da Costa Santos"
-title: "Título provisório"
+title: "Previsão de Inadimplência em Operações de Crédito com Modelos Lineares Generalizados"
 subtitle: "TCC 01"
 # bibliography: references.bib
 # csl: abnt-num.csl
 lang: "pt-br"
 execute:
     echo: false
-    cache: true
+    cache: false
 toc: false
 number-sections: false
 toc-depth: 2
@@ -23,8 +23,8 @@ format:
     code-tools: false
     number-sections: true
     embed-resources: true
-    docx:
-        reference-doc: reference.docx
+  docx:
+    reference-doc: reference.docx
 editor: source
 ---
 
@@ -43,8 +43,6 @@ p_load("tidyverse", "rio", "gt", "labelled", "moments", "janitor", "corrr", "ggc
 p_load("tidymodels", "dotwhisker", "skimr", "car", "forcats")
 options(scipen = 999, OutDec = ",")
 ```
-
-\newpage
 
 # Introdução
 
@@ -389,7 +387,7 @@ interpretação do comportamento real da população e comprometer qualquer infe
 Daí surge a necessidade de analisar e tratar individualmente estas variáveis.
 
 Foi aferido após a inspeção da @tbl-desc-analysis-summary-nondefault-preview,
-mais especificamente, o mínimo da variável compromentimento da renda que consta como zero,
+mais especificamente, o mínimo da variável comprometimento da renda que consta como zero,
 que existem `r nrow(credit_risk |> filter(loan_percent_income == 0))` observações na base com esta discrepância.
 Tendo elas valores de rendas e valores de empréstimos positivos. Portanto, o comprometimento da renda
 será corrigido para estes registros, obtendo-o através da razão entre o valor do empréstimo e a
@@ -477,7 +475,7 @@ ggplot(credit_risk_omit, aes(y = person_emp_length)) +
       width = 0.5,
       show.legend = FALSE
     ) +
-    scale_y_continuous(breaks = seq(20, 140, by = 20)) +
+    scale_y_continuous(breaks = seq(0, 140, by = 20)) +
     labs(y = "Tempo de emprego (anos)") +
     theme_minimal(base_size = 11) +
     theme(axis.text.x = element_blank(), axis.ticks.x = element_blank()) +
@@ -488,7 +486,12 @@ ggplot(credit_risk_omit, aes(y = person_emp_length)) +
 ```{r}
 #| label: person-age-chunk
 
-# 1. Filtro na base bruta
+# 1. Filtro na base bruta (apenas faixa etária e com consistência de emprego)
+only_age_20_40 <- credit_risk |>
+  filter(person_age >= 20, person_age <= 40) |>
+  nrow()
+only_age_20_40_prop <- only_age_20_40 / nrow(credit_risk)
+
 credit_risk_filtered <- credit_risk |>
   filter(
     person_age >= 20,
@@ -528,7 +531,7 @@ Poderíamos então seguir o comportamento convencional já estabelecido no merca
 esta justificativa apresentada. Contudo, neste estudo, nos propomos a trabalhar com a
 modelagem de regressão para previsão da incidência de inadimplência em empréstimos restrita a um público mais jovem, na faixa etária de 20 a 40 anos.
 Consideramos a idade mínima para começar a trabalhar como sendo 16
-anos, padrão adotado pela maioria dos países. Naturalmente, isso a
+anos, padrão adotado pela maioria dos países. Naturalmente, isso implica a
 remoção de quaisquer observações em que a diferença entre a idade e o tempo de emprego seja inferior a 16 anos,
 cenário que seria infactível dentro do critério adotado.
 
@@ -538,9 +541,11 @@ por jovens adultos e profissionais em consolidação de carreira. Portanto, a
 restrição a este intervalo etário possibilita o aprimoramento da modelagem
 estatística voltada a um público mais importante para as instituições financeiras. 
 
-No nosso conjunto de dados, a proporção dos empréstimos concedidos nesta faixa etária representa
-`r format(new_person_age__lte_40, big.mark = ".")` das `r format(nrow(credit_risk), big.mark = ".")` observações sobre a amostra original (`r format(round(new_person_age_prop__lte_40 * 100, 2), decimal.mark = ",")`%).
-Com a remoção das observações faltantes mencionadas anteriormente, esta faixa etária representa
+No nosso conjunto de dados, a faixa etária de 20 a 40 anos concentra
+`r format(only_age_20_40, big.mark = ".")` das `r format(nrow(credit_risk), big.mark = ".")` observações da amostra original (`r format(round(only_age_20_40_prop * 100, 2), decimal.mark = ",")`%);
+aplicando-se também o critério de consistência com o tempo de emprego (desconsiderando registros sem essa informação),
+permanecem `r format(new_person_age__lte_40, big.mark = ".")` observações (`r format(round(new_person_age_prop__lte_40 * 100, 2), decimal.mark = ",")`% da base original).
+Com a remoção completa das observações faltantes mencionadas anteriormente, o recorte final resulta em
 `r format(new_person_age__omit__lte_40, big.mark = ".")` das `r format(nrow(credit_risk__omit), big.mark = ".")` observações (`r format(round(new_person_age_prop__omit__lte_40 * 100, 2), decimal.mark = ",")`%).
 Portanto, fica claro que estes indivíduos são responsáveis por representar uma alta densidade
 amostral dentro do intervalo. Não há desvantagens operacionais com esta
@@ -584,7 +589,7 @@ credit_risk_clean |>
 
 age_lt_emp_length <- sum(credit_risk_clean$person_age < credit_risk_clean$person_emp_length)
 age_lt_cb_person_cred_hist_length <- sum(credit_risk_clean$person_age < credit_risk_clean$cb_person_cred_hist_length)
-max_diff_ratio_loan_percent_income <- max(abs(credit_risk$loan_amnt / credit_risk$person_income - credit_risk$loan_percent_income))
+max_diff_ratio_loan_percent_income <- max(abs(credit_risk_clean$loan_amnt / credit_risk_clean$person_income - credit_risk_clean$loan_percent_income))
 ```
 
 
@@ -837,7 +842,7 @@ ggplot(credit_risk_clean, aes(x = loan_status, y = person_age, fill = loan_statu
         width = 0.5,
         show.legend = FALSE
     ) +
-    scale_y_continuous(breaks = seq(20, 140, by = 20)) +
+    scale_y_continuous(breaks = seq(20, 40, by = 5)) +
     scale_fill_manual(values = c("Adimplente" = "#9ecae1", "Inadimplente" = "#6baed6")) +
     labs(
         x = "Situação do empréstimo",
@@ -1012,8 +1017,8 @@ credit_risk_clean |>
 
 O gráfico de barras da @fig-bar-person-emp-length mostra que a variável possui
 uma distribuição assimétrica positiva, com cauda pesada à direita. Chama a
-atenção a manifestação de um fenômeno natural na variável: pessoas desempregadas
-são as que mais tomam empréstimos, e isso pode ser observado na figura.
+atenção o elevado volume concentrado no valor zero: tomadores com menos de um ano
+no emprego atual constituem o grupo mais frequente de solicitantes na amostra.
 
 ```{r}
 #| out-width: 100%
@@ -1034,7 +1039,7 @@ credit_risk_clean |>
 
 ### Valor do empréstimo
 
-A média de empréstimos na base é de `r format((medidas_descritivas |> filter(var_name == "loan_amnt"))$mean, big.mark = ".", decimal.mark = ",")`.
+A média de empréstimos na base é de `r format(round((medidas_descritivas |> filter(var_name == "loan_amnt"))$mean, 2), nsmall = 2, big.mark = ".", decimal.mark = ",")`.
 A mediana do segundo grupo da @fig-boxplot-loan-amnt indica que aqueles que não pagam costumam
 tomar empréstimos mais altos com maior frequência do que aqueles que pagam (o que é sinalizado pelas
 cercas de Tukey mais amplas do segundo grupo em conjunto com um menor número de
@@ -1063,7 +1068,7 @@ credit_risk_clean |>
 
 O histograma aponta que a maior parte dos empréstimos estão concentrados na
 metade esquerda do gráfico. Há um número razoável de empréstimos de até 25 mil.
-Concessão de empréstimos acima desse valor decaem drasticamente.
+A concessão de empréstimos acima desse valor decai drasticamente.
 
 ```{r}
 #| out-width: 100%
@@ -1223,8 +1228,8 @@ credit_risk_clean |>
 ### Histórico de crédito
 
 O histórico de crédito médio dos tomadores de crédito é de cerca de
-`r format((medidas_descritivas |> filter(var_name == "cb_person_cred_hist_length"))$mean, decimal.mark = ",")` anos
-com desvio padrão de `r format((medidas_descritivas |> filter(var_name == "cb_person_cred_hist_length"))$sd, decimal.mark = ",")` anos,
+`r format(round((medidas_descritivas |> filter(var_name == "cb_person_cred_hist_length"))$mean, 2), nsmall = 2, decimal.mark = ",")` anos
+com desvio padrão de `r format(round((medidas_descritivas |> filter(var_name == "cb_person_cred_hist_length"))$sd, 2), nsmall = 2, decimal.mark = ",")` anos,
 de acordo com as medidas descritivas da @tbl-desc-analysis-summary.
 No geral a distribuição da variável é bastante semelhante entre os dois grupos
 (@fig-boxplot-cb-person-cred-hist-length).
@@ -1342,13 +1347,13 @@ pct_alug_financ <- tbl_contigency |>
   filter(person_home_ownership %in% c("Alugada", "Financiada")) |>
   pull(pct_inadimp) |>
   sum() |>
-  scales::percent(accuracy = 0.1)
+  scales::percent(accuracy = 0.1, decimal.mark = ",")
 ```
 
 
 Já ao observarmos a distribuição conjunta da situação do empréstimo de acordo com o
 tipo de moradia, descrito na @tbl-dblentry-person-home-ownership, notamos que a
-maior parte dos empréstimos é concecido a tomadores que residem em imóveis
+maior parte dos empréstimos é concedido a tomadores que residem em imóveis
 alugados ou financiados, sendo estes dois grupos os que concentram a maior parte
 dos inadimplentes, cerca de `r pct_alug_financ`.
 
@@ -1992,7 +1997,6 @@ Essa última relação fica mais evidente por meio de um gráfico de dispersão.
 #| fig-cap: Diagrama de dispersão entre valor do empréstimo e comprometimento da renda
 
 ggplot(credit_risk_clean, aes(x = loan_amnt, y = loan_percent_income)) +
-  geom_point(alpha = 0.5) +
     geom_hex(bins = 60) +
     scale_fill_viridis_c(trans = "log10") +
     theme_minimal() +
@@ -2144,10 +2148,16 @@ fator de inflação de variância generalizada padronizado.
 #| tbl-cap: Fator de inflação de variância generalizada (GVIF)
 
 # Variable selection with GVIF and CV.
+# Apply same collapsing as recipe (threshold = 0.02) for consistency.
+train_data_vif <- train_data |>
+  mutate(
+    across(all_of(categoricas), \(x) fct_lump_prop(x, prop = 0.02, other_level = "other"))
+  )
+
 # Base model for GVIF verification.
 glm_check_vif <- glm(loan_status ~ . - person_income + log(person_income),
   family = binomial,
-  data = train_data
+  data = train_data_vif
 ) |>
     vif() |>
     as.data.frame()
@@ -2156,6 +2166,7 @@ glm_check_vif <- glm_check_vif |>
     mutate(variables = coalesce(nomes_legiveis[rownames(glm_check_vif)], "Renda pessoal"))
 
 colnames(glm_check_vif) <- c("GVIF", "DF", "SGVIF", "variables")
+gvif_loan_grade <- glm_check_vif |> filter(variables == "Risco de inadimplência") |> pull(GVIF)
 
 # Problems detected here.
 glm_check_vif |>
@@ -2202,7 +2213,7 @@ Note que a última coluna da @tbl-gvif-detection está na escala
 da raiz quadrada ($\text{GVIF}^{1/(2\times\text{Df})}$), portanto, valores desta coluna superiores a 2,24 são indicadores de
 multicolinearidade. Dessa maneira, detectam-se 3 variáveis com valores padronizados acima do limiar:
 valor do empréstimo, taxa de juros e comprometimento da renda, além do elevado $\text{GVIF}$ bruto
-apresentado pelo risco de inadimplência ($12{,}247$).
+apresentado pelo risco de inadimplência (`r format(round(gvif_loan_grade, 3), decimal.mark = ",")`).
 
 Estas variáveis estão fortemente relacionadas entre si por meio de dois
 grupos:
@@ -2360,7 +2371,7 @@ glm_check_vif <- glm(
     loan_status ~ .
         - person_income + log(person_income) - loan_amnt - loan_int_rate,
     family = binomial,
-    data = train_data
+    data = train_data_vif
 ) |>
     vif() |>
     as.data.frame()
@@ -2947,9 +2958,6 @@ destaca-se sobretudo a piora na classificação de risco com o grupo de outros r
 elevando a chance de inadimplência em aproximadamente $55,32$ vezes em relação ao grau A.
 Em seguida o comprometimento da renda, em que cada ponto percentual adicional aumenta a chance de
 inadimplência em $8,38\%$.
-```
-
-```
 
 Podemos então avaliar o desempenho do modelo final no conjunto de teste,
 por meio da @tbl-logit-last-fit-metrics.
@@ -3025,7 +3033,6 @@ logit_last_fit_roc_curve |>
     geom_path(lwd = 1.2, color = "#4B0082") +
     geom_abline(lty = 3) +
     coord_equal() +
-    scale_color_viridis_d(option = "plasma", end = .6) +
     labs(
         x = "1 - Especificidade",
         y = "Sensibilidade"
@@ -3154,8 +3161,14 @@ boot_samples <- bootstraps(
   )
 
 # Intervalo de confiança percentil de 95%
-int_pctl(boot_samples, estimates, alpha = 0.05) |>
-    mutate(term = "AUC-ROC", .method = "percentil") |>
+boot_auc_ci <- int_pctl(boot_samples, estimates, alpha = 0.05) |>
+    mutate(term = "AUC-ROC", .method = "percentil")
+
+test_auc_est <- collect_metrics(logit_last_fit) |>
+    filter(.metric == "roc_auc") |>
+    pull(.estimate)
+
+boot_auc_ci |>
     gt(rowname_col = "term") |>
     tab_stubhead("Termo") |>
     cols_label(
@@ -3164,6 +3177,10 @@ int_pctl(boot_samples, estimates, alpha = 0.05) |>
         .estimate = "Estimativa",
         .alpha = "Significância",
         .method = "Método"
+    ) |>
+    tab_footnote(
+        footnote = md("**Nota:** a coluna Estimativa apresenta a média das 1.000 reamostragens bootstrap."),
+        locations = cells_column_labels(columns = .estimate)
     ) |>
     tab_source_note(
         source_note = md("**Fonte**: Elaboração própria.")
@@ -3200,44 +3217,53 @@ int_pctl(boot_samples, estimates, alpha = 0.05) |>
     )
 ```
 
-Como exibido pela @tbl-bootstrap-AUC, para uma estimativa pontual de $0,8775$, o intervalo de
-confiança percentil de 95% situou-se entre $0,8678$ (limite inferior) e $0,8872$ (limite superior).
+Como exibido pela @tbl-bootstrap-AUC, para uma média bootstrap de `r format(round(boot_auc_ci$.estimate, 4), nsmall = 4, decimal.mark = ",")`
+(frente à estimativa pontual de `r format(round(test_auc_est, 4), nsmall = 4, decimal.mark = ",")` no conjunto de teste), o intervalo de
+confiança percentil de 95% situou-se entre `r format(round(boot_auc_ci$.lower, 4), nsmall = 4, decimal.mark = ",")` (limite inferior) e `r format(round(boot_auc_ci$.upper, 4), nsmall = 4, decimal.mark = ",")` (limite superior).
 A reduzida amplitude desse intervalo indica alta precisão e estabilidade do modelo logístico na
 discriminação entre adimplentes e inadimplentes.
 
 ## Avaliação de limiares do modelo
 
-Nesta seção, avaliamos diferentes limiares (pontos de corte) para a probabilidade predita de inadimplência,
-a fim de identificar um limiar de decisão mais adequado que o corte padrão ($0,50$) para a classificação
-final e a obtenção da matriz de confusão.
+Nesta seção, avaliamos diferentes limiares (pontos de corte) para a probabilidade predita de inadimplência
+nas predições *out-of-fold* da validação cruzada, a fim de identificar um limiar de decisão mais adequado que o corte padrão ($0,50$)
+sem incorrer em vazamento de dados do conjunto de teste, aplicando-o posteriormente para a obtenção da matriz de confusão final.
 
 ```{r}
 #| label: tbl-cortes
-#| tbl-cap: Desempenho de classificação do modelo para diferentes pontos de corte
+#| tbl-cap: Desempenho de classificação do modelo na validação cruzada para diferentes pontos de corte
 
-# 1. Encontra o corte ótimo pelo Índice de Youden
-corte_youden <- logit_last_fit_roc_curve |>
+# 1. Encontra o corte ótimo pelo Índice de Youden nas predições de validação cruzada (sem usar o conjunto de teste)
+logit_cv_roc_curve <- logit_fit_rs_preds |>
+  roc_curve(truth = loan_status, .pred_Inadimplente, event_level = "second")
+
+corte_youden_raw <- logit_cv_roc_curve |>
   mutate(youden = sensitivity + specificity - 1) |>
   slice_max(youden, n = 1) |>
   pull(.threshold)
 
-# 2. Monta a grade incluindo o corte exato de Youden
-limiares <- sort(unique(c(0.15, 0.20, 0.25, 0.30, 0.35, 0.40, 0.50, round(corte_youden, 4))))
+corte_youden <- round(corte_youden_raw, 4)
+
+# 2. Monta a grade na validação cruzada incluindo o corte exato (arredondado a 4 casas) de Youden
+limiares <- sort(unique(c(0.15, 0.20, 0.25, 0.30, 0.35, 0.40, 0.50, corte_youden)))
 
 tbl_cortes <- purrr::map_dfr(limiares, \(corte) {
   classe_pred <- factor(
-    ifelse(logit_last_fit_preds$.pred_Inadimplente >= corte, "Inadimplente", "Adimplente"),
-    levels = levels(logit_last_fit_preds$loan_status)
+    ifelse(logit_fit_rs_preds$.pred_Inadimplente >= corte, "Inadimplente", "Adimplente"),
+    levels = levels(logit_fit_rs_preds$loan_status)
   )
   tibble(
     corte = corte,
-    Sensibilidade = sens_vec(logit_last_fit_preds$loan_status, classe_pred, event_level = "second"),
-    Especificidade = spec_vec(logit_last_fit_preds$loan_status, classe_pred, event_level = "second"),
-    `Acurácia Balanceada` = bal_accuracy_vec(logit_last_fit_preds$loan_status, classe_pred),
-    Precisão = precision_vec(logit_last_fit_preds$loan_status, classe_pred, event_level = "second"),
-    `F1-Score` = f_meas_vec(logit_last_fit_preds$loan_status, classe_pred, event_level = "second")
+    Sensibilidade = sens_vec(logit_fit_rs_preds$loan_status, classe_pred, event_level = "second"),
+    Especificidade = spec_vec(logit_fit_rs_preds$loan_status, classe_pred, event_level = "second"),
+    `Acurácia Balanceada` = bal_accuracy_vec(logit_fit_rs_preds$loan_status, classe_pred),
+    Precisão = precision_vec(logit_fit_rs_preds$loan_status, classe_pred, event_level = "second"),
+    `F1-Score` = f_meas_vec(logit_fit_rs_preds$loan_status, classe_pred, event_level = "second")
   )
 })
+
+linha_youden_cv <- tbl_cortes |> filter(abs(corte - corte_youden) < 1e-6)
+linha_padrao_cv <- tbl_cortes |> filter(abs(corte - 0.50) < 1e-6)
 
 # 3. Formata no gt destacando a linha do Índice de Youden
 tbl_cortes |>
@@ -3246,13 +3272,13 @@ tbl_cortes |>
     fmt_number(columns = everything(), decimals = 4, dec_mark = ",", sep_mark = ".") |>
     tab_style(
         style = cell_fill(color = "#5dbff7"),
-        locations = cells_body(rows = abs(corte - round(corte_youden, 4)) < 1e-6)
+        locations = cells_body(rows = abs(corte - corte_youden) < 1e-6)
     ) |>
     tab_footnote(
-        footnote = md("**Nota:** ponto de corte ótimo selecionado pelo Índice *J* de Youden."),
+        footnote = md("**Nota:** ponto de corte ótimo selecionado pelo Índice *J* de Youden na validação cruzada."),
         locations = cells_body(
             columns = corte,
-            rows = abs(corte - round(corte_youden, 4)) < 1e-6
+            rows = abs(corte - corte_youden) < 1e-6
         )
     ) |>
     cols_align(align = "right", columns = everything()) |>
@@ -3272,27 +3298,45 @@ tbl_cortes |>
 
 Conforme observado na @tbl-cortes, a redução do ponto de corte eleva progressivamente a
 sensibilidade do modelo em troca de uma diminuição na especificidade e na precisão.
-Pelo critério do Índice $J$ de Youden, o limiar ótimo identificado foi de $0,2583$,
-ponto em que o modelo atinge a maior acurácia balanceada ($81,02\%$),
-alcançando sensibilidade de $76,72\%$ e especificidade de $85,32\%$,
-um ganho de mais de $20$ pontos percentuais na detecção de inadimplentes
-em relação ao corte padrão de $0,50$ ($55,86\%$).
+Pelo critério do Índice $J$ de Youden na validação cruzada, o limiar ótimo identificado foi de `r format(corte_youden, nsmall = 4, decimal.mark = ",")`,
+ponto em que o modelo atinge na validação a maior acurácia balanceada (`r format(round(linha_youden_cv[["Acurácia Balanceada"]] * 100, 2), nsmall = 2, decimal.mark = ",")`%),
+alcançando sensibilidade de `r format(round(linha_youden_cv$Sensibilidade * 100, 2), nsmall = 2, decimal.mark = ",")`% e especificidade de `r format(round(linha_youden_cv$Especificidade * 100, 2), nsmall = 2, decimal.mark = ",")`%,
+um ganho superior a `r floor((linha_youden_cv$Sensibilidade - linha_padrao_cv$Sensibilidade) * 100)` pontos percentuais na detecção de inadimplentes
+em relação ao corte padrão de $0,50$ (`r format(round(linha_padrao_cv$Sensibilidade * 100, 2), nsmall = 2, decimal.mark = ",")`%).
 
 ```{r}
 #| label: tbl-matriz-youden
 #| tbl-cap: Matriz de confusão do modelo logístico final no conjunto de teste com ponto de corte otimizado
 
-# 1. Gera a nova matriz de confusão usando o ponto de corte de Youden
-matriz_youden <- logit_last_fit_preds |>
+# 1. Gera a nova matriz de confusão no conjunto de teste usando exatamente o corte_youden (4 casas) da CV
+youden_test_preds <- logit_last_fit_preds |>
   mutate(
     pred_youden = factor(
       ifelse(.pred_Inadimplente >= corte_youden, "Inadimplente", "Adimplente"),
       levels = levels(loan_status)
     )
-  ) |>
+  )
+
+matriz_youden <- youden_test_preds |>
   count(Predição = pred_youden, loan_status) |>
   tidyr::pivot_wider(names_from = loan_status, values_from = n, values_fill = 0) |>
   mutate(Total = Adimplente + Inadimplente)
+
+# Métricas exatas no teste com o corte selecionado
+tp_padrao <- sum(logit_test_preds$.pred_class == "Inadimplente" & logit_test_preds$loan_status == "Inadimplente")
+fn_padrao <- sum(logit_test_preds$.pred_class == "Adimplente" & logit_test_preds$loan_status == "Inadimplente")
+fp_padrao <- sum(logit_test_preds$.pred_class == "Inadimplente" & logit_test_preds$loan_status == "Adimplente")
+
+tp_youden <- sum(youden_test_preds$pred_youden == "Inadimplente" & youden_test_preds$loan_status == "Inadimplente")
+fn_youden <- sum(youden_test_preds$pred_youden == "Adimplente" & youden_test_preds$loan_status == "Inadimplente")
+fp_youden <- sum(youden_test_preds$pred_youden == "Inadimplente" & youden_test_preds$loan_status == "Adimplente")
+n_adimp_teste <- sum(youden_test_preds$loan_status == "Adimplente")
+reducao_fn_pct <- (fn_padrao - fn_youden) / fn_padrao * 100
+
+acc_youden <- accuracy_vec(youden_test_preds$loan_status, youden_test_preds$pred_youden)
+prec_youden <- precision_vec(youden_test_preds$loan_status, youden_test_preds$pred_youden, event_level = "second")
+sens_youden <- sens_vec(youden_test_preds$loan_status, youden_test_preds$pred_youden, event_level = "second")
+spec_youden <- spec_vec(youden_test_preds$loan_status, youden_test_preds$pred_youden, event_level = "second")
 
 # Adiciona a linha de Total geral
 linha_total <- tibble(
@@ -3314,7 +3358,7 @@ bind_rows(matriz_youden, linha_total) |>
     sep_mark = "."
   ) |>
   tab_footnote(
-    footnote = md(paste0("**Nota:** classificações obtidas adotando o ponto de corte ótimo de ", format(round(corte_youden, 4), decimal.mark = ","), " (Índice *J* de Youden) para a probabilidade predita de inadimplência.")),
+    footnote = md(paste0("**Nota:** classificações obtidas adotando o ponto de corte ótimo de ", format(corte_youden, nsmall = 4, decimal.mark = ","), " (Índice *J* de Youden na validação cruzada) para a probabilidade predita de inadimplência.")),
     locations = cells_column_labels(columns = Predição)
   ) |>
   cols_align(align = "left", columns = Predição) |>
@@ -3334,14 +3378,16 @@ bind_rows(matriz_youden, linha_total) |>
 ```
 
 A @tbl-matriz-youden apresenta a matriz de confusão recalculada no conjunto de teste a
-partir do limiar ótimo de $0,2583$.
+partir do limiar ótimo de `r format(corte_youden, nsmall = 4, decimal.mark = ",")`.
 Em comparação à matriz obtida com o ponto de corte padrão de $0,50$ (@tbl-confusion-matrix-logit-last-fit),
-o número de inadimplentes corretamente identificados elevou-se de $972$ para $1.336$,
-reduzindo os falsos negativos de $768$ para $404$ operações (uma queda de $47,40\%$ nas concessões indevidas
+o número de inadimplentes corretamente identificados elevou-se de `r format(tp_padrao, big.mark = ".")` para `r format(tp_youden, big.mark = ".")`
+(sensibilidade de `r format(round(sens_youden * 100, 2), nsmall = 2, decimal.mark = ",")`%),
+reduzindo os falsos negativos de `r format(fn_padrao, big.mark = ".")` para `r format(fn_youden, big.mark = ".")` operações (uma queda de `r format(round(reducao_fn_pct, 2), nsmall = 2, decimal.mark = ",")`% nas concessões indevidas
 a maus pagadores).
 
 Em contrapartida, como esperado pelo compromisso entre sensibilidade e especificidade, os falsos positivos aumentaram
-de $267$ para $920$ casos entre os $6.265$ tomadores adimplentes, resultando em acurácia global de $83,46\%$ e
-precisão de $59,22\%$. Desse modo, a calibração do limiar via Índice $J$ de Youden demonstra-se mais
+de `r format(fp_padrao, big.mark = ".")` para `r format(fp_youden, big.mark = ".")` casos entre os `r format(n_adimp_teste, big.mark = ".")` tomadores adimplentes
+(especificidade de `r format(round(spec_youden * 100, 2), nsmall = 2, decimal.mark = ",")`%), resultando em acurácia global de `r format(round(acc_youden * 100, 2), nsmall = 2, decimal.mark = ",")`% e
+precisão de `r format(round(prec_youden * 100, 2), nsmall = 2, decimal.mark = ",")`%. Desse modo, a calibração do limiar via Índice $J$ de Youden demonstra-se mais
 aderente à gestão de risco de crédito, priorizando a mitigação de perdas por inadimplência sem comprometer de forma
 excessiva a aprovação de bons pagadores.
