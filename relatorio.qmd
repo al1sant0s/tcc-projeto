@@ -8,7 +8,7 @@ subtitle: "TCC 01"
 lang: "pt-br"
 execute:
     echo: false
-    cache: false
+    cache: true
 toc: false
 number-sections: false
 toc-depth: 2
@@ -2957,6 +2957,7 @@ por meio da @tbl-logit-last-fit-metrics.
 ```{r}
 #| label: tbl-logit-last-fit-metrics
 #| tbl-cap: Métricas do modelo logístico final ajustado no conjunto de teste
+#| cache: false
 
 collect_metrics(logit_last_fit) |>
     mutate(
@@ -3015,8 +3016,11 @@ a curva ROC do modelo final no conjunto de teste.
 #| label: fig-roc-curve-logit-last-fit
 #| fig-cap: Curva ROC do modelo logístico final no conjunto de teste
 
-collect_predictions(logit_last_fit) |>
-    roc_curve(truth = loan_status, .pred_Inadimplente, event_level = "second") |>
+logit_last_fit_preds <- collect_predictions(logit_last_fit)
+logit_last_fit_roc_curve <- logit_last_fit_preds |>
+    roc_curve(truth = loan_status, .pred_Inadimplente, event_level = "second")
+
+logit_last_fit_roc_curve |>
     ggplot(aes(x = 1 - specificity, y = sensitivity)) +
     geom_path(lwd = 1.2, color = "#4B0082") +
     geom_abline(lty = 3) +
@@ -3028,8 +3032,10 @@ collect_predictions(logit_last_fit) |>
     )
 ```
 
+
 Também ajustamos a matriz de confusão do modelo final no conjunto de teste
-adotando o ponto de corte padrão de $0{,}50$, apresentada na @tbl-confusion-matrix-logit-last-fit.
+adotando o ponto de corte padrão de ($0,50$), apresentada na
+@tbl-confusion-matrix-logit-last-fit.
 
 ```{r}
 #| label: tbl-confusion-matrix-logit-last-fit
@@ -3042,6 +3048,7 @@ logit_test_preds <- collect_predictions(logit_last_fit) |>
             levels = c("Adimplente", "Inadimplente")
         )
     )
+
 
 logit_conf_mat <- logit_test_preds |>
     tabyl(.pred_class, loan_status) |>
@@ -3056,7 +3063,7 @@ logit_conf_mat |>
     gt(rowname_col = ".pred_class") |>
     tab_stubhead("Predição") |>
     tab_spanner(
-        columns = c("Adimplente", "Inadimplente", "Total"),
+        columns = c("Adimplente", "Inadimplente"),
         label = "Situação observada"
     ) |>
     tab_footnote(
@@ -3107,3 +3114,234 @@ enquanto `r format(sum(logit_test_preds$.pred_class == "Adimplente" & logit_test
 Essa menor sensibilidade frente à especificidade decorre diretamente da adoção do ponto de corte padrão ($0{,}50$)
 em uma base desbalanceada (~22% de inadimplentes). Em aplicações práticas de concessão de crédito, nas quais o custo financeiro de um falso negativo (conceder crédito a um inadimplente) costuma superar o custo de oportunidade de um falso positivo, esse limiar de decisão pode ser reduzido estrategicamente para ampliar a sensibilidade do modelo.
 
+## Bootstrap e intervalos de confiança
+
+Faremos uso do método de reamostragem **Bootstrap**
+para construir um intervalo de confiança de 95%, pelo método percentil,
+para a área sob a curva ROC (AUC-ROC) do modelo logístico final, permitindo
+quantificar a incerteza em torno de sua capacidade discriminatória.
+
+```{r}
+#| label: tbl-bootstrap-AUC
+#| tbl-cap: Intervalo de confiança de 95% para a AUC via Bootstrap
+
+# 1. Extrai as predições do conjunto de teste do last_fit
+# logit_last_fit_preds <- collect_predictions(logit_last_fit)
+
+# 2. Identifica automaticamente os nomes da coluna de desfecho e da probabilidade do 2º nível
+outcome_col <- names(logit_last_fit_preds)[5] # Geralmente a 5ª coluna é o desfecho real
+event_prob_col <- grep("^\\.pred_", names(logit_last_fit_preds), value = TRUE)[2] # 2º nível (.pred_Sim, .pred_1, etc.)
+
+set.seed(2026)
+boot_samples <- bootstraps(
+  logit_last_fit_preds,
+  times = 1000,
+  strata = all_of("loan_status"),
+  apparent = TRUE # Necessário caso queira usar int_bca()
+) |>
+  mutate(
+    estimates = map(
+      splits,
+      \(s) tibble(
+        term = "roc_auc",
+        estimate = roc_auc_vec(
+          truth = analysis(s)[["loan_status"]],
+          estimate = analysis(s)[[".pred_Inadimplente"]],
+          event_level = "second"
+        )
+      )
+    )
+  )
+
+# Intervalo de confiança percentil de 95%
+int_pctl(boot_samples, estimates, alpha = 0.05) |>
+    mutate(term = "AUC-ROC", .method = "percentil") |>
+    gt(rowname_col = "term") |>
+    tab_stubhead("Termo") |>
+    cols_label(
+        .lower = "Limite Inferior",
+        .upper = "Limite Superior",
+        .estimate = "Estimativa",
+        .alpha = "Significância",
+        .method = "Método"
+    ) |>
+    tab_source_note(
+        source_note = md("**Fonte**: Elaboração própria.")
+    ) |>
+    cols_align(align = "right", columns = everything()) |>
+    cols_align(align = "right", columns = .method) |>
+    cols_align(align = "left", columns = term) |>
+    tab_style(
+        style = cell_text(align = "left"),
+        locations = cells_stubhead()
+    ) |>
+    tab_style(
+        style = cell_text(align = "left"),
+        locations = list(cells_source_notes(), cells_footnotes())
+    ) |>
+    tab_options(
+        table.width = "100%",
+        column_labels.font.weight = "bold",
+        column_labels.padding = "10px",
+        source_notes.font.size = px(12),
+        footnotes.font.size = px(12)
+    ) |>
+    fmt_number(
+        columns = c(".lower", ".estimate", ".upper"),
+        decimals = 4,
+        dec_mark = ",",
+        sep_mark = "."
+    ) |>
+    fmt_number(
+        columns = ".alpha",
+        decimals = 2,
+        dec_mark = ",",
+        sep_mark = "."
+    )
+```
+
+Como exibido pela @tbl-bootstrap-AUC, para uma estimativa pontual de $0,8775$, o intervalo de
+confiança percentil de 95% situou-se entre $0,8678$ (limite inferior) e $0,8872$ (limite superior).
+A reduzida amplitude desse intervalo indica alta precisão e estabilidade do modelo logístico na
+discriminação entre adimplentes e inadimplentes.
+
+## Avaliação de limiares do modelo
+
+Nesta seção, avaliamos diferentes limiares (pontos de corte) para a probabilidade predita de inadimplência,
+a fim de identificar um limiar de decisão mais adequado que o corte padrão ($0,50$) para a classificação
+final e a obtenção da matriz de confusão.
+
+```{r}
+#| label: tbl-cortes
+#| tbl-cap: Desempenho de classificação do modelo para diferentes pontos de corte
+
+# 1. Encontra o corte ótimo pelo Índice de Youden
+corte_youden <- logit_last_fit_roc_curve |>
+  mutate(youden = sensitivity + specificity - 1) |>
+  slice_max(youden, n = 1) |>
+  pull(.threshold)
+
+# 2. Monta a grade incluindo o corte exato de Youden
+limiares <- sort(unique(c(0.15, 0.20, 0.25, 0.30, 0.35, 0.40, 0.50, round(corte_youden, 4))))
+
+tbl_cortes <- purrr::map_dfr(limiares, \(corte) {
+  classe_pred <- factor(
+    ifelse(logit_last_fit_preds$.pred_Inadimplente >= corte, "Inadimplente", "Adimplente"),
+    levels = levels(logit_last_fit_preds$loan_status)
+  )
+  tibble(
+    corte = corte,
+    Sensibilidade = sens_vec(logit_last_fit_preds$loan_status, classe_pred, event_level = "second"),
+    Especificidade = spec_vec(logit_last_fit_preds$loan_status, classe_pred, event_level = "second"),
+    `Acurácia Balanceada` = bal_accuracy_vec(logit_last_fit_preds$loan_status, classe_pred),
+    Precisão = precision_vec(logit_last_fit_preds$loan_status, classe_pred, event_level = "second"),
+    `F1-Score` = f_meas_vec(logit_last_fit_preds$loan_status, classe_pred, event_level = "second")
+  )
+})
+
+# 3. Formata no gt destacando a linha do Índice de Youden
+tbl_cortes |>
+    gt() |>
+    cols_label(corte = "Ponto de corte") |>
+    fmt_number(columns = everything(), decimals = 4, dec_mark = ",", sep_mark = ".") |>
+    tab_style(
+        style = cell_fill(color = "#5dbff7"),
+        locations = cells_body(rows = abs(corte - round(corte_youden, 4)) < 1e-6)
+    ) |>
+    tab_footnote(
+        footnote = md("**Nota:** ponto de corte ótimo selecionado pelo Índice *J* de Youden."),
+        locations = cells_body(
+            columns = corte,
+            rows = abs(corte - round(corte_youden, 4)) < 1e-6
+        )
+    ) |>
+    cols_align(align = "right", columns = everything()) |>
+    tab_style(
+        style = cell_text(align = "left"),
+        locations = list(cells_source_notes(), cells_footnotes())
+    ) |>
+    tab_options(
+        table.width = "100%",
+        column_labels.font.weight = "bold",
+        column_labels.padding = "10px",
+        source_notes.font.size = px(12),
+        footnotes.font.size = px(12)
+    ) |>
+    tab_source_note(md("**Fonte**: Elaboração própria."))
+```
+
+Conforme observado na @tbl-cortes, a redução do ponto de corte eleva progressivamente a
+sensibilidade do modelo em troca de uma diminuição na especificidade e na precisão.
+Pelo critério do Índice $J$ de Youden, o limiar ótimo identificado foi de $0,2583$,
+ponto em que o modelo atinge a maior acurácia balanceada ($81,02\%$),
+alcançando sensibilidade de $76,72\%$ e especificidade de $85,32\%$,
+um ganho de mais de $20$ pontos percentuais na detecção de inadimplentes
+em relação ao corte padrão de $0,50$ ($55,86\%$).
+
+```{r}
+#| label: tbl-matriz-youden
+#| tbl-cap: Matriz de confusão do modelo logístico final no conjunto de teste com ponto de corte otimizado
+
+# 1. Gera a nova matriz de confusão usando o ponto de corte de Youden
+matriz_youden <- logit_last_fit_preds |>
+  mutate(
+    pred_youden = factor(
+      ifelse(.pred_Inadimplente >= corte_youden, "Inadimplente", "Adimplente"),
+      levels = levels(loan_status)
+    )
+  ) |>
+  count(Predição = pred_youden, loan_status) |>
+  tidyr::pivot_wider(names_from = loan_status, values_from = n, values_fill = 0) |>
+  mutate(Total = Adimplente + Inadimplente)
+
+# Adiciona a linha de Total geral
+linha_total <- tibble(
+  Predição = "Total",
+  Adimplente = sum(matriz_youden$Adimplente),
+  Inadimplente = sum(matriz_youden$Inadimplente),
+  Total = sum(matriz_youden$Total)
+)
+
+# 2. Formata no gt seguindo o mesmo padrão visual da Tabela 17
+bind_rows(matriz_youden, linha_total) |>
+  gt() |>
+  tab_spanner(
+    label = "Situação observada",
+    columns = c(Adimplente, Inadimplente)
+  ) |>
+  fmt_integer(
+    columns = c(Adimplente, Inadimplente, Total),
+    sep_mark = "."
+  ) |>
+  tab_footnote(
+    footnote = md(paste0("**Nota:** classificações obtidas adotando o ponto de corte ótimo de ", format(round(corte_youden, 4), decimal.mark = ","), " (Índice *J* de Youden) para a probabilidade predita de inadimplência.")),
+    locations = cells_column_labels(columns = Predição)
+  ) |>
+  cols_align(align = "left", columns = Predição) |>
+  cols_align(align = "right", columns = c(Adimplente, Inadimplente, Total)) |>
+  tab_style(
+    style = cell_text(align = "left"),
+    locations = list(cells_source_notes(), cells_footnotes())
+  ) |>
+  tab_options(
+    table.width = "100%",
+    column_labels.font.weight = "bold",
+    column_labels.padding = "10px",
+    source_notes.font.size = px(12),
+    footnotes.font.size = px(12)
+  ) |>
+  tab_source_note(md("**Fonte**: Elaboração própria."))
+```
+
+A @tbl-matriz-youden apresenta a matriz de confusão recalculada no conjunto de teste a
+partir do limiar ótimo de $0,2583$.
+Em comparação à matriz obtida com o ponto de corte padrão de $0,50$ (@tbl-confusion-matrix-logit-last-fit),
+o número de inadimplentes corretamente identificados elevou-se de $972$ para $1.336$,
+reduzindo os falsos negativos de $768$ para $404$ operações (uma queda de $47,40\%$ nas concessões indevidas
+a maus pagadores).
+
+Em contrapartida, como esperado pelo compromisso entre sensibilidade e especificidade, os falsos positivos aumentaram
+de $267$ para $920$ casos entre os $6.265$ tomadores adimplentes, resultando em acurácia global de $83,46\%$ e
+precisão de $59,22\%$. Desse modo, a calibração do limiar via Índice $J$ de Youden demonstra-se mais
+aderente à gestão de risco de crédito, priorizando a mitigação de perdas por inadimplência sem comprometer de forma
+excessiva a aprovação de bons pagadores.
